@@ -23,5 +23,6 @@ data class DownloadRecord(
     val status: DownloadStatus = DownloadStatus.PENDING,
     val downloadTime: Long = System.currentTimeMillis(),
     val netDiskType: NetDiskType = NetDiskType.OTHER,
-    val category: ResourceCategory = ResourceCategory.ALL
+    val category: ResourceCategory = ResourceCategory.ALL,
+    val downloadId: Long = -1
 )

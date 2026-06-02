@@ -30,13 +30,13 @@ class SearchResultAdapter(
 
     inner class ViewHolder(private val binding: ItemSearchResultBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(result: SearchResult) {
-            binding.title.text = result.title
-            binding.description.text = result.description
-            binding.netdiskType.text = NetDiskUtils.getNetDiskTypeName(result.netDiskType)
-            binding.size.text = result.size
-            binding.date.text = result.date
+            binding.resultTitle.text = result.title
+            binding.resultDesc.text = result.description
+            binding.resultSource.text = result.sourceName
+            binding.resultSize.text = result.size
+            binding.resultDate.text = result.date
 
-            binding.downloadBtn.setOnClickListener {
+            binding.resultDownloadBtn.setOnClickListener {
                 onDownloadClick(result)
             }
         }

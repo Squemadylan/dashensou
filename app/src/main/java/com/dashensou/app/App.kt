@@ -2,6 +2,8 @@ package com.dashensou.app
 
 import android.app.Application
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.dashensou.app.database.AppDatabase
 
 class App : Application() {
@@ -20,6 +22,12 @@ class App : Application() {
             applicationContext,
             AppDatabase::class.java,
             "dashensou_db"
-        ).build()
+        )
+            .addMigrations(object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE download_records ADD COLUMN downloadId INTEGER NOT NULL DEFAULT -1")
+                }
+            })
+            .build()
     }
 }

@@ -9,6 +9,9 @@ interface SearchHistoryDao {
     @Query("SELECT * FROM search_history ORDER BY searchTime DESC")
     fun getAllSearchHistory(): Flow<List<SearchHistory>>
 
+    @Query("SELECT * FROM search_history ORDER BY searchTime DESC")
+    fun getAllHistory(): Flow<List<SearchHistory>>
+
     @Query("SELECT * FROM search_history ORDER BY searchCount DESC, searchTime DESC LIMIT :limit")
     fun getHotSearchHistory(limit: Int): Flow<List<SearchHistory>>
 
@@ -18,11 +21,20 @@ interface SearchHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSearchHistory(history: SearchHistory)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHistory(history: SearchHistory)
+
     @Query("SELECT * FROM search_history WHERE keyword = :keyword LIMIT 1")
     suspend fun getSearchHistoryByKeyword(keyword: String): SearchHistory?
 
+    @Query("SELECT * FROM search_history WHERE keyword = :keyword LIMIT 1")
+    suspend fun getHistoryByKeyword(keyword: String): SearchHistory?
+
     @Update
     suspend fun updateSearchHistory(history: SearchHistory)
+
+    @Update
+    suspend fun updateHistory(history: SearchHistory)
 
     @Delete
     suspend fun deleteSearchHistory(history: SearchHistory)

@@ -1,24 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
-        <item name="android:colorBackground">@color/colorBackground</item>
-        <item name="colorSurface">@color/colorSurface</item>
-        <item name="colorError">@color/colorError</item>
-        <item name="android:windowBackground">@color/colorBackground</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
     </style>
 
-    <style name="SearchBarStyle" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-        <item name="boxStrokeColor">@color/colorPrimary</item>
-        <item name="hintTextColor">@color/colorTextHint</item>
-        <item name="android:textColorHint">@color/colorTextHint</item>
+    <style name="AppTheme.NoActionBar" parent="AppTheme">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
     </style>
 
-    <style name="CategoryTabStyle" parent="Widget.MaterialComponents.TabLayout">
-        <item name="tabTextColor">@color/colorTextSecondary</item>
-        <item name="tabSelectedTextColor">@color/colorPrimary</item>
-        <item name="tabIndicatorColor">@color/colorPrimary</item>
-        <item name="tabIndicatorHeight">2dp</item>
+    <style name="SearchBarStyle">
+        <item name="boxBackgroundMode">outline</item>
+        <item name="boxStrokeColor">@color/primary</item>
+        <item name="boxCornerRadiusBottomEnd">@dimen/corner_radius_large</item>
+        <item name="boxCornerRadiusBottomStart">@dimen/corner_radius_large</item>
+        <item name="boxCornerRadiusTopEnd">@dimen/corner_radius_large</item>
+        <item name="boxCornerRadiusTopStart">@dimen/corner_radius_large</item>
+        <item name="hintTextColor">@color/text_hint</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <style name="CategoryTabStyle">
+        <item name="tabIndicatorColor">@color/accent</item>
+        <item name="tabIndicatorHeight">3dp</item>
+        <item name="tabSelectedTextColor">@color/accent</item>
+        <item name="tabTextColor">@color/text_secondary</item>
+        <item name="tabTextAppearance">@style/CategoryTabText</item>
+    </style>
+
+    <style name="CategoryTabText">
+        <item name="textAllCaps">false</item>
+        <item name="android:textSize">@dimen/text_size_normal</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="GlassCard">
+        <item name="android:background">@drawable/bg_glass_card</item>
+        <item name="android:elevation">@dimen/elevation_small</item>
+        <item name="android:padding">@dimen/padding_medium</item>
+    </style>
+
+    <style name="NeonButton">
+        <item name="android:background">@drawable/bg_neon_button</item>
+        <item name="android:paddingLeft">@dimen/padding_large</item>
+        <item name="android:paddingRight">@dimen/padding_large</item>
+        <item name="android:minHeight">@dimen/button_height</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_size_normal</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="BottomNavItem">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">@dimen/text_size_small</item>
     </style>
 </resources>

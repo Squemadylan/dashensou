@@ -7,7 +7,7 @@ import com.dashensou.app.data.model.SearchHistory
 
 @Database(
     entities = [SearchHistory::class, DownloadRecord::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

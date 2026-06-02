@@ -26,7 +26,10 @@ data class SearchResult(
     val size: String = "",
     val date: String = "",
     val sourceUrl: String = "",
+    val sourceName: String = "",
     val category: ResourceCategory = ResourceCategory.ALL,
     val fileType: String? = null,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    val requiresWebView: Boolean = false,
+    val extractionCode: String? = null
 )

@@ -1,16 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#6200EE</color>
-    <color name="colorPrimaryDark">#3700B3</color>
-    <color name="colorAccent">#03DAC6</color>
-    <color name="colorBackground">#FFFFFF</color>
-    <color name="colorSurface">#FFFFFF</color>
-    <color name="colorError">#B00020</color>
-    <color name="colorOnPrimary">#FFFFFF</color>
-    <color name="colorOnSecondary">#FFFFFF</color>
-    <color name="colorOnBackground">#121212</color>
-    <color name="colorOnSurface">#121212</color>
-    <color name="colorGray">#F5F5F5</color>
-    <color name="colorGrayDark">#E0E0E0</color>
-    <color name="colorTextSecondary">#757575</color>
-    <color name="colorTextHint">#9E9E9E</color>
+    <color name="primary">#7F5DFE</color>
+    <color name="primary_dark">#5B21B6</color>
+    <color name="primary_light">#A78BFA</color>
+    <color name="accent">#FFE066</color>
+    <color name="accent_secondary">#06B6D4</color>
+    <color name="neon_magenta">#EC4899</color>
+    <color name="neon_cyan">#22D3EE</color>
+    <color name="bg_dark">#0F0F23</color>
+    <color name="bg_card">#1A1A3C</color>
+    <color name="bg_card_hover">#22224D</color>
+    <color name="glass">#33FFFFFF</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B8B8D1</color>
+    <color name="text_hint">#8080A8</color>
+    <color name="divider">#333355</color>
+    <color name="status_success">#22C55E</color>
+    <color name="status_error">#EF4444</color>
+    <color name="status_pending">#F59E0B</color>
+    
+    <!-- 兼容旧版颜色 -->
+    <color name="colorPrimary">@color/primary</color>
+    <color name="colorPrimaryDark">@color/primary_dark</color>
+    <color name="colorAccent">@color/accent</color>
+    <color name="colorBackground">@color/bg_dark</color>
+    <color name="colorOnBackground">@color/text_primary</color>
+    <color name="colorGray">#444466</color>
 </resources>

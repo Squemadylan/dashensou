@@ -51,12 +51,11 @@ object NetDiskUtils {
 
     fun buildNetDiskIntentUrl(url: String, type: NetDiskType): String {
         return when (type) {
-            NetDiskType.BAIDU -> {
-                "bdpan://share?url=$url"
-            }
-            NetDiskType.QUARK -> {
-                "quark://pan/share?url=$url"
-            }
+            NetDiskType.BAIDU -> "bdpan://$url"
+            NetDiskType.QUARK -> "quark://$url"
+            NetDiskType.XUNLEI -> url
+            NetDiskType.ALIYUN -> "aliyunpan://$url"
+            NetDiskType.YUNPAN123 -> "pan123://$url"
             else -> url
         }
     }

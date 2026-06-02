@@ -4,35 +4,72 @@ import android.util.Log
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
-import com.dashensou.app.util.NetDiskUtils
+import com.dashensou.app.service.source.GutendexSource
+import com.dashensou.app.service.source.OpenLibrarySource
+import com.dashensou.app.service.source.PansouCcSource
+import com.dashensou.app.service.source.SearchOutcome
+import com.dashensou.app.service.source.SearchSource
+import com.dashensou.app.service.source.WanzhanApiSource
+import com.dashensou.app.service.source.XiaoShuoApiSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import java.io.IOException
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 
-class SearchService {
+class SearchService(
+    private val wanzhanApiKeys: List<String> = emptyList(),
+    val sources: List<SearchSource> = defaultSources(wanzhanApiKeys)
+) {
 
     companion object {
         private const val TAG = "SearchService"
-        private const val BASE_URL = "https://pansou.cc"
-        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 DaShenSou/1.0"
-    }
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
+        private const val SOURCE_TIMEOUT_MS = 6000L
+        private const val SOURCE_WEIGHT_WANZHAN = 100
+        private const val SOURCE_WEIGHT_PANSOU = 80
+        private const val SOURCE_WEIGHT_XIAOSHUO = 60
+        private const val SOURCE_WEIGHT_OPENLIBRARY = 40
+        private const val SOURCE_WEIGHT_GUTENDEX = 30
 
-    sealed class SearchOutcome {
-        data class Success(val results: List<SearchResult>) : SearchOutcome()
-        data class Failure(val message: String, val cause: Throwable? = null) : SearchOutcome()
+        private const val NETDISK_BAIDU = 30
+        private const val NETDISK_QUARK = 28
+        private const val NETDISK_ALIYUN = 26
+        private const val NETDISK_XUNLEI = 22
+        private const val NETDISK_YUNPAN123 = 20
+        private const val NETDISK_DIRECT_URL = 10
+        private const val NETDISK_OTHER = 0
+
+        private const val FRESHNESS_DAYS_FRESH = 180
+        private const val FRESHNESS_DAYS_OK = 730
+
+        fun defaultSources(wanzhanApiKeys: List<String> = emptyList()): List<SearchSource> = listOf(
+            WanzhanApiSource(apiKeys = wanzhanApiKeys),
+            PansouCcSource(),
+            XiaoShuoApiSource(),
+            OpenLibrarySource(),
+            GutendexSource()
+        )
+
+        private fun sourceWeight(name: String): Int = when {
+            name.contains("万站", ignoreCase = true) -> SOURCE_WEIGHT_WANZHAN
+            name.contains("Pansou", ignoreCase = true) -> SOURCE_WEIGHT_PANSOU
+            name.contains("小说", ignoreCase = true) -> SOURCE_WEIGHT_XIAOSHUO
+            name.contains("OpenLibrary", ignoreCase = true) -> SOURCE_WEIGHT_OPENLIBRARY
+            name.contains("Gutendex", ignoreCase = true) -> SOURCE_WEIGHT_GUTENDEX
+            else -> 10
+        }
+
+        private fun netDiskWeight(type: NetDiskType): Int = when (type) {
+            NetDiskType.BAIDU -> NETDISK_BAIDU
+            NetDiskType.QUARK -> NETDISK_QUARK
+            NetDiskType.ALIYUN -> NETDISK_ALIYUN
+            NetDiskType.XUNLEI -> NETDISK_XUNLEI
+            NetDiskType.YUNPAN123 -> NETDISK_YUNPAN123
+            NetDiskType.DIRECT_URL -> NETDISK_DIRECT_URL
+            NetDiskType.OTHER -> NETDISK_OTHER
+        }
     }
 
     suspend fun search(
@@ -44,153 +81,137 @@ class SearchService {
             return@withContext SearchOutcome.Success(emptyList())
         }
 
-        val encoded = try {
-            URLEncoder.encode(keyword.trim(), "UTF-8")
-        } catch (e: Exception) {
-            keyword.trim()
+        val activeSources = sources.filter { it.enabled }
+        Log.i(TAG, "search '$keyword' page=$page category=$category activeSources=${activeSources.size}/${sources.size}")
+
+        val perSource = coroutineScope {
+            activeSources.map { source ->
+                async(Dispatchers.IO) {
+                    val name = source.displayName
+                    val outcome = try {
+                        withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                            source.search(keyword, page, category)
+                        } ?: run {
+                            Log.w(TAG, "source '$name' timed out after ${SOURCE_TIMEOUT_MS}ms")
+                            SearchOutcome.Success(emptyList())
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "source '$name' crashed: ${e.message}", e)
+                        SearchOutcome.Failure("异常: ${e.message ?: "未知"}", e)
+                    }
+                    name to outcome
+                }
+            }.map { it.await() }
         }
-        val url = "$BASE_URL/s/$encoded-$page.html"
-        Log.i(TAG, "search start: keyword='$keyword' page=$page url=$url")
 
-        try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            val bodyLen = response.body?.contentLength() ?: -1L
-            Log.i(TAG, "search response: code=${response.code} bodyLength=$bodyLen")
+        val merged = mutableListOf<SearchResult>()
+        val failures = mutableListOf<String>()
+        perSource.forEach { (name, outcome) ->
+            when (outcome) {
+                is SearchOutcome.Success -> {
+                    if (outcome.results.isNotEmpty()) {
+                        Log.i(TAG, "source '$name' returned ${outcome.results.size}")
+                        merged.addAll(outcome.results)
+                    } else {
+                        Log.d(TAG, "source '$name' returned 0 results")
+                    }
+                }
+                is SearchOutcome.Failure -> {
+                    Log.w(TAG, "source '$name' failed: ${outcome.message}")
+                    failures.add("$name: ${outcome.message}")
+                }
+            }
+        }
 
-            if (!response.isSuccessful) {
-                return@withContext SearchOutcome.Failure("HTTP ${response.code}")
+        val deduped = dedupe(merged)
+        val sorted = sortByScore(deduped, keyword)
+        Log.i(TAG, "merged=${merged.size} deduped=${deduped.size} sorted=${sorted.size} failures=${failures.size}")
+
+        when {
+            sorted.isNotEmpty() -> SearchOutcome.Success(sorted)
+            failures.isNotEmpty() && merged.isEmpty() -> {
+                SearchOutcome.Failure("全部数据源失败：${failures.joinToString("; ")}")
             }
-            val body = response.body
-            if (body == null) {
-                return@withContext SearchOutcome.Failure("响应体为空")
-            }
-            val html = body.string()
-            val document = Jsoup.parse(html, BASE_URL)
-            val results = parsePansouResults(document, category)
-            Log.i(TAG, "search parsed: count=${results.size} (after category=$category filter)")
-            SearchOutcome.Success(results)
-        } catch (e: IOException) {
-            Log.e(TAG, "search IO failed: ${e.message}", e)
-            SearchOutcome.Failure("网络异常: ${e.message ?: "未知"}", e)
-        } catch (e: Exception) {
-            Log.e(TAG, "search failed: ${e.message}", e)
-            SearchOutcome.Failure("解析失败: ${e.message ?: "未知"}", e)
+            else -> SearchOutcome.Success(emptyList())
         }
     }
 
-    private fun parsePansouResults(document: Document, category: ResourceCategory): List<SearchResult> {
-        val results = mutableListOf<SearchResult>()
+    private fun dedupe(list: List<SearchResult>): List<SearchResult> {
+        val groups = LinkedHashMap<String, MutableList<SearchResult>>()
+        for (item in list) {
+            val key = buildDedupeKey(item)
+            groups.getOrPut(key) { mutableListOf() }.add(item)
+        }
+        return groups.values.map { mergeGroup(it) }
+    }
 
-        val items = document.select("div.resource-item-wrap")
-        Log.d(TAG, "matched resource-item-wrap: ${items.size}")
+    private fun buildDedupeKey(item: SearchResult): String {
+        val normalizedUrl = item.url.substringBefore('?').lowercase(Locale.ROOT)
+        val normalizedTitle = item.title.lowercase(Locale.ROOT)
+            .replace("[^a-z0-9\\u4e00-\\u9fa5]".toRegex(), "")
+            .take(40)
+        val type = item.netDiskType.name
+        return "$type|$normalizedTitle|$normalizedUrl"
+    }
 
-        items.forEachIndexed { index, item ->
+    private fun mergeGroup(group: List<SearchResult>): SearchResult {
+        if (group.size == 1) return group[0]
+        val primary = group.maxBy { sourceWeight(it.sourceName) }
+        val extCodes = group.mapNotNull { it.extractionCode }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val merged = primary.copy(
+            extractionCode = primary.extractionCode ?: extCodes.firstOrNull()
+        )
+        return merged
+    }
+
+    private fun sortByScore(list: List<SearchResult>, keyword: String): List<SearchResult> {
+        val now = System.currentTimeMillis()
+        val kwLower = keyword.lowercase(Locale.ROOT)
+        return list.sortedByDescending { r -> scoreOf(r, kwLower, now) }
+    }
+
+    private fun scoreOf(r: SearchResult, keywordLower: String, nowMs: Long): Double {
+        var score = 0.0
+        score += sourceWeight(r.sourceName)
+        score += netDiskWeight(r.netDiskType)
+
+        val titleLower = r.title.lowercase(Locale.ROOT)
+        if (titleLower.contains(keywordLower)) score += 25
+        if (titleLower.startsWith(keywordLower)) score += 10
+        if (r.extractionCode.isNullOrBlank()) score += 2
+
+        val parsedDate = parseDateMillis(r.date)
+        if (parsedDate != null) {
+            val days = ((nowMs - parsedDate) / 86_400_000L).coerceAtLeast(0)
+            score += when {
+                days <= FRESHNESS_DAYS_FRESH -> 10.0
+                days <= FRESHNESS_DAYS_OK -> 5.0
+                days <= FRESHNESS_DAYS_OK * 2 -> 1.0
+                else -> -5.0
+            }
+        }
+
+        return score
+    }
+
+    private fun parseDateMillis(s: String): Long? {
+        if (s.isBlank()) return null
+        val patterns = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd",
+            "yyyy/MM/dd"
+        )
+        for (p in patterns) {
             try {
-                val titleEl = item.selectFirst("h3.resource-title a") ?: return@forEachIndexed
-                val title = titleEl.text()?.trim()?.let { Jsoup.parseBodyFragment(it).body().text() } ?: return@forEachIndexed
-                if (title.isEmpty()) return@forEachIndexed
-
-                val href = titleEl.attr("href")
-                val detailUrl = if (href.startsWith("http")) href else BASE_URL + href
-
-                val sizeEl = item.selectFirst(".resource-meta .em")
-                val size = sizeEl?.text()?.trim() ?: ""
-
-                val timeEl = item.selectFirst(".other-info .time")
-                val date = timeEl?.text()?.trim() ?: ""
-
-                val fileType = getFileType(title)
-                if (!matchesCategory(category, fileType)) {
-                    return@forEachIndexed
-                }
-
-                results.add(
-                    SearchResult(
-                        id = "$index-${System.currentTimeMillis()}",
-                        title = title,
-                        description = "",
-                        url = detailUrl,
-                        netDiskType = NetDiskType.OTHER,
-                        size = size,
-                        date = date,
-                        sourceUrl = detailUrl,
-                        category = category,
-                        fileType = fileType,
-                        isValid = true
-                    )
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "parse item failed: index=$index", e)
+                val sdf = java.text.SimpleDateFormat(p, Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                return sdf.parse(s)?.time
+            } catch (_: Exception) {
             }
         }
-
-        return results
-    }
-
-    suspend fun fetchDetailUrl(detailUrl: String): String? = withContext(Dispatchers.IO) {
-        try {
-            Log.i(TAG, "fetchDetail start: $detailUrl")
-            val request = Request.Builder()
-                .url(detailUrl)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful || response.body == null) {
-                Log.w(TAG, "fetchDetail HTTP ${response.code}")
-                return@withContext null
-            }
-            val html = response.body!!.string()
-            val document = Jsoup.parse(html, detailUrl)
-            val candidates = document.select("a[href]")
-            for (a in candidates) {
-                val href = a.attr("href")
-                if (href.isBlank() || !href.startsWith("http")) continue
-                if (href.contains("pan.baidu.com") ||
-                    href.contains("pan.quark.cn") ||
-                    href.contains("pan.xunlei.com") ||
-                    href.contains("aliyundrive.com") ||
-                    href.contains("123pan.com") ||
-                    href.contains("123684.com")) {
-                    Log.i(TAG, "fetchDetail hit: $href")
-                    return@withContext href
-                }
-            }
-            Log.w(TAG, "fetchDetail miss: no netdisk link")
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchDetail failed", e)
-            null
-        }
-    }
-
-    private fun getFileType(title: String): String? {
-        val lower = title.lowercase()
-        return when {
-            lower.contains(".pdf") -> "pdf"
-            lower.contains(".epub") -> "epub"
-            lower.contains(".mobi") -> "mobi"
-            lower.contains(".azw3") -> "mobi"
-            lower.contains(".txt") -> "txt"
-            lower.contains(".mp3") -> "mp3"
-            lower.contains(".mp4") || lower.contains(".mkv") || lower.contains(".avi") || lower.contains(".rmvb") || lower.contains(".ts") -> "video"
-            lower.contains(".zip") || lower.contains(".rar") || lower.contains(".7z") -> "archive"
-            else -> null
-        }
-    }
-
-    private fun matchesCategory(category: ResourceCategory, fileType: String?): Boolean {
-        if (category == ResourceCategory.ALL) return true
-        return when (category) {
-            ResourceCategory.EBOOK -> fileType in listOf("pdf", "epub", "mobi", "txt")
-            ResourceCategory.MOVIE -> fileType == "video"
-            ResourceCategory.TV -> fileType == "video"
-            else -> true
-        }
+        return null
     }
 }

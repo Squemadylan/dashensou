@@ -22,9 +22,12 @@
         <package android:name="com.xunlei.downloadprovider" />
         <package android:name="com.alicloud.databox" />
         <package android:name="com.yunpan.www" />
-        <package android:name="com.123pan" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 
@@ -66,6 +69,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.WebViewActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
 
     </application>
 

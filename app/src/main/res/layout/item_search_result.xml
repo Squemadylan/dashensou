@@ -1,96 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="@dimen/padding_medium"
-    android:background="?attr/selectableItemBackground">
+    app:cardCornerRadius="@dimen/corner_radius_large"
+    app:cardElevation="@dimen/elevation_small"
+    app:cardBackgroundColor="@color/bg_card"
+    app:strokeColor="@color/primary"
+    app:strokeWidth="1dp"
+    android:layout_marginBottom="@dimen/margin_medium">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:weightSum="1">
+        android:orientation="vertical"
+        android:padding="@dimen/padding_medium">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="0.85"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
             <TextView
-                android:id="@+id/title"
-                android:layout_width="match_parent"
+                android:id="@+id/result_title"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:textSize="@dimen/text_size_large"
+                android:textColor="@color/text_primary"
                 android:textStyle="bold"
-                android:textColor="@color/colorOnBackground"/>
+                android:maxLines="2"
+                android:ellipsize="end"/>
 
             <TextView
-                android:id="@+id/description"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="@dimen/text_size_medium"
-                android:textColor="@color/colorTextSecondary"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:layout_marginTop="@dimen/margin_small"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="@dimen/margin_small">
-
-                <TextView
-                    android:id="@+id/netdisk_type"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="@dimen/text_size_small"
-                    android:textColor="@color/colorPrimary"
-                    android:background="@drawable/bg_tag"
-                    android:paddingHorizontal="@dimen/padding_small"
-                    android:paddingVertical="2dp"/>
-
-                <TextView
-                    android:id="@+id/size"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="@dimen/text_size_small"
-                    android:textColor="@color/colorTextSecondary"
-                    android:layout_marginStart="@dimen/margin_small"/>
-
-                <TextView
-                    android:id="@+id/date"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="@dimen/text_size_small"
-                    android:textColor="@color/colorTextSecondary"
-                    android:layout_marginStart="@dimen/margin_small"/>
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="0.15"
-            android:gravity="center">
-
-            <Button
-                android:id="@+id/download_btn"
+                android:id="@+id/result_source"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/download"
                 android:textSize="@dimen/text_size_small"
-                android:textColor="@color/colorOnPrimary"
-                android:background="@color/colorPrimary"
-                android:paddingHorizontal="@dimen/padding_medium"
-                android:paddingVertical="@dimen/padding_small"/>
+                android:textColor="@color/accent"
+                android:background="@drawable/bg_tag"
+                android:paddingLeft="@dimen/padding_small"
+                android:paddingRight="@dimen/padding_small"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:layout_marginStart="@dimen/margin_small"/>
 
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/result_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:textSize="@dimen/text_size_normal"
+            android:textColor="@color/text_secondary"
+            android:maxLines="2"
+            android:ellipsize="end"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="@dimen/margin_medium">
+
+            <TextView
+                android:id="@+id/result_size"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="@dimen/text_size_small"
+                android:textColor="@color/text_hint"/>
+
+            <TextView
+                android:id="@+id/result_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="@dimen/text_size_small"
+                android:textColor="@color/text_hint"/>
+
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/result_download_btn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_medium"
+            android:text="获取资源"
+            android:textSize="@dimen/text_size_normal"
+            android:textStyle="bold"
+            android:background="@drawable/bg_neon_button"
+            app:cornerRadius="@dimen/corner_radius_large"
+            app:iconGravity="textStart"
+            app:icon="@drawable/ic_nav_download"/>
 
     </LinearLayout>
 
-</LinearLayout>
+</androidx.cardview.widget.CardView>
