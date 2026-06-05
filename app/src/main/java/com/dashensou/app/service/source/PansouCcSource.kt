@@ -4,34 +4,26 @@ import android.util.Log
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
+import com.dashensou.app.net.HttpClient
+import com.dashensou.app.util.CategoryRules
+import com.dashensou.app.util.FileTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.jsoup.Jsoup
-import java.io.IOException
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
-class PansouCcSource(
-    private val client: OkHttpClient = defaultClient()
-) : SearchSource {
+class PansouCcSource : SearchSource {
 
-    override val id = "pansou"
-    override val displayName = "盘搜搜 (pansou.cc)"
+    override val id = "pansou_cc"
+    override val displayName = "搜盘来源"
     override var enabled: Boolean = true
+    // pansou.cc 列表页也是慢站,实测 1.8-2.5s 起步。给 4.5s 预算。
+    override val perSourceTimeoutMs: Long = 4_500L
 
     companion object {
         private const val TAG = "PansouCcSource"
         private const val BASE_URL = "https://pansou.cc"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 DaShenSou/1.0"
-
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
     }
 
     override suspend fun search(
@@ -50,31 +42,18 @@ class PansouCcSource(
         val url = "$BASE_URL/s/$encoded-$page.html"
         Log.i(TAG, "search start: keyword='$keyword' page=$page url=$url")
 
+        val html = HttpClient.getString(url, userAgent = USER_AGENT)
+        if (html == null) {
+            return@withContext SearchOutcome.Failure.sourceDown("响应为空或网络异常")
+        }
         try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            val bodyLen = response.body?.contentLength() ?: -1L
-            Log.i(TAG, "search response: code=${response.code} bodyLength=$bodyLen")
-
-            if (!response.isSuccessful) {
-                return@withContext SearchOutcome.Failure("HTTP ${response.code}")
-            }
-            val body = response.body ?: return@withContext SearchOutcome.Failure("响应体为空")
-            val html = body.string()
             val document = Jsoup.parse(html, BASE_URL)
             val results = parsePansouResults(document, category)
             Log.i(TAG, "search parsed: count=${results.size}")
             SearchOutcome.Success(results)
-        } catch (e: IOException) {
-            Log.e(TAG, "search IO failed: ${e.message}", e)
-            SearchOutcome.Failure("网络异常: ${e.message ?: "未知"}", e)
         } catch (e: Exception) {
-            Log.e(TAG, "search failed: ${e.message}", e)
-            SearchOutcome.Failure("解析失败: ${e.message ?: "未知"}", e)
+            Log.e(TAG, "parse failed: ${e.message}", e)
+            SearchOutcome.Failure.parse("解析失败: ${e.message ?: "未知"}", e)
         }
     }
 
@@ -87,21 +66,14 @@ class PansouCcSource(
     suspend fun fetchDetail(detailUrl: String): DetailInfo? = withContext(Dispatchers.IO) {
         try {
             Log.i(TAG, "fetchDetail start: $detailUrl")
-            val request = Request.Builder()
-                .url(detailUrl)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful || response.body == null) {
-                Log.w(TAG, "fetchDetail HTTP ${response.code}")
-                return@withContext null
-            }
-            val html = response.body!!.string()
+            val html = HttpClient.getString(detailUrl, userAgent = USER_AGENT)
+                ?: run {
+                    Log.w(TAG, "fetchDetail: empty body")
+                    return@withContext null
+                }
             val document = Jsoup.parse(html, detailUrl)
 
-            val password = document.select("#pwd").firstOrNull()?.text()?.trim()
-                ?.takeIf { it.isNotEmpty() }
+            val password = extractPassword(document)
 
             val gotoBtn = document.select("a.button[href^=/goto/]").firstOrNull()
                 ?: document.select("a[href^=/goto/]").firstOrNull()
@@ -134,6 +106,29 @@ class PansouCcSource(
         }
     }
 
+    /**
+     * pansou.cc puts the extraction code in `#pwd` on the detail page
+     * (not on the search list). Guard against picking up UI chrome like
+     * "点击复制".
+     */
+    private fun extractPassword(document: org.jsoup.nodes.Document): String? {
+        val candidates = listOf(
+            document.select("#pwd").firstOrNull()?.text(),
+            document.select(".resource-meta #pwd").firstOrNull()?.text(),
+            document.select(".copy-item #pwd").firstOrNull()?.text()
+        )
+        for (raw in candidates) {
+            val v = raw?.trim().orEmpty()
+            if (v.isBlank()) continue
+            if (v.equals("点击复制", ignoreCase = true)) continue
+            if (v.length > 20) continue
+            return v
+        }
+        val html = document.html()
+        val m = Regex("""提取密码\s*</span>\s*<span[^>]*id="pwd"[^>]*>([^<]+)</span>""").find(html)
+        return m?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() && !it.equals("点击复制", true) }
+    }
+
     private fun parsePansouResults(
         document: org.jsoup.nodes.Document,
         category: ResourceCategory
@@ -157,8 +152,8 @@ class PansouCcSource(
                 val timeEl = item.selectFirst(".other-info .time")
                 val date = timeEl?.text()?.trim() ?: ""
 
-                val fileType = getFileType(title)
-                if (!matchesCategory(category, fileType)) {
+                val fileType = FileTypes.detectFromTitle(title)
+                if (!CategoryRules.matchesByNetDisk(NetDiskType.OTHER, fileType, category)) {
                     return@forEachIndexed
                 }
 
@@ -173,6 +168,7 @@ class PansouCcSource(
                         date = date,
                         sourceUrl = detailUrl,
                         sourceName = displayName,
+                        sourceId = id,
                         category = category,
                         fileType = fileType,
                         isValid = true,
@@ -185,30 +181,5 @@ class PansouCcSource(
         }
 
         return results
-    }
-
-    private fun getFileType(title: String): String? {
-        val lower = title.lowercase()
-        return when {
-            lower.contains(".pdf") -> "pdf"
-            lower.contains(".epub") -> "epub"
-            lower.contains(".mobi") -> "mobi"
-            lower.contains(".azw3") -> "mobi"
-            lower.contains(".txt") -> "txt"
-            lower.contains(".mp3") -> "mp3"
-            lower.contains(".mp4") || lower.contains(".mkv") || lower.contains(".avi") || lower.contains(".rmvb") || lower.contains(".ts") -> "video"
-            lower.contains(".zip") || lower.contains(".rar") || lower.contains(".7z") -> "archive"
-            else -> null
-        }
-    }
-
-    private fun matchesCategory(category: ResourceCategory, fileType: String?): Boolean {
-        if (category == ResourceCategory.ALL) return true
-        return when (category) {
-            ResourceCategory.EBOOK -> fileType in listOf("pdf", "epub", "mobi", "txt")
-            ResourceCategory.MOVIE -> fileType == "video"
-            ResourceCategory.TV -> fileType == "video"
-            else -> true
-        }
     }
 }

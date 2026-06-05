@@ -92,13 +92,24 @@
             </LinearLayout>
 
             <ImageButton
+                android:id="@+id/download_folder_btn"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="@dimen/margin_small"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="打开下载文件夹"
+                android:src="@drawable/ic_folder"
+                app:tint="@color/text_secondary" />
+
+            <ImageButton
                 android:id="@+id/download_action_btn"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="@dimen/margin_small"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Action"
-                android:src="@android:drawable/ic_menu_close_clear_cancel"/>
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                app:tint="@color/accent" />
 
         </LinearLayout>
 

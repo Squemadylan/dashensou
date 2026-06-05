@@ -4,28 +4,28 @@ import android.util.Log
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
+import com.dashensou.app.net.HttpClient
+import com.dashensou.app.util.CategoryRules
+import com.dashensou.app.util.FileTypes
+import com.dashensou.app.util.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 class WanzhanApiSource(
-    private val apiKeys: List<String> = emptyList(),
-    private val client: OkHttpClient = defaultClient()
+    private val apiKeys: List<String> = emptyList()
 ) : SearchSource {
 
     override val id = "wanzhan"
-    override val displayName = "万站API (聚合搜索)"
+    override val displayName = "万站聚合"
     override var enabled: Boolean = true
-
-    private val keyRotationIndex = AtomicInteger(0)
+    override val perSourceTimeoutMs: Long = API_BUDGET_MS
 
     private data class KeyHealth(
         var consecutiveFailures: Int = 0,
@@ -33,23 +33,37 @@ class WanzhanApiSource(
     )
 
     private val keyHealthMap = ConcurrentHashMap<String, KeyHealth>()
+    // P0#robustness: every read+mutate pair on a KeyHealth instance is
+    // guarded by this monitor. The previous design read & wrote the two
+    // fields directly from multiple search() coroutines, which meant
+    // a "failure++" could race with a "read for cooldown" and the
+    // counter could get lost. The map itself is concurrent so the
+    // getOrPut side is safe; we only need to protect the fields.
+    private val healthLock = Any()
 
     companion object {
         private const val TAG = "WanzhanApiSource"
         private const val BASE_URL = "https://wzapi.com/api/jhsj"
-        private const val USER_AGENT = "DaShenSou/1.0 (Android)"
 
-        private const val MAX_KEY_FAILURES = 3
-        private const val KEY_COOLDOWN_MS = 60_000L
-        private const val MAX_RETRY_PER_KEY = 1
-        private const val MAX_TOTAL_RETRIES = 2
-        private const val BACKOFF_BASE_MS = 200L
-        private const val BACKOFF_MAX_MS = 1_000L
+        private const val MAX_KEY_FAILURES = 2
+        private const val KEY_COOLDOWN_MS = 120_000L
+        private const val MAX_TOTAL_RETRIES = 3
+        private const val BACKOFF_BASE_MS = 500L
+        private const val BACKOFF_MAX_MS = 2_000L
 
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(6, TimeUnit.SECONDS)
-            .readTimeout(8, TimeUnit.SECONDS)
-            .build()
+        private const val GLOBAL_MIN_INTERVAL_MS = 4000L
+        private const val API_BUDGET_MS = 12_000L
+
+        private val apiClient: OkHttpClient by lazy {
+            HttpClient.client.newBuilder()
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .callTimeout(API_BUDGET_MS, TimeUnit.MILLISECONDS)
+                .build()
+        }
+
+        @Volatile
+        private var lastSuccessTimestamp: Long = 0L
     }
 
     private fun healthOf(key: String): KeyHealth =
@@ -57,11 +71,14 @@ class WanzhanApiSource(
 
     private fun isKeyAvailable(key: String, now: Long): Boolean {
         val h = healthOf(key)
-        return h.consecutiveFailures < MAX_KEY_FAILURES || now >= h.cooldownUntilMs
+        return synchronized(healthLock) {
+            h.consecutiveFailures < MAX_KEY_FAILURES || now >= h.cooldownUntilMs
+        }
     }
 
     private fun markKeySuccess(key: String) {
-        healthOf(key).let { h ->
+        val h = healthOf(key)
+        synchronized(healthLock) {
             h.consecutiveFailures = 0
             h.cooldownUntilMs = 0L
         }
@@ -70,12 +87,18 @@ class WanzhanApiSource(
 
     private fun markKeyFailure(key: String) {
         val h = healthOf(key)
-        h.consecutiveFailures += 1
-        if (h.consecutiveFailures >= MAX_KEY_FAILURES) {
-            h.cooldownUntilMs = System.currentTimeMillis() + KEY_COOLDOWN_MS
-            Log.w(TAG, "key '${key.take(6)}...' disabled for ${KEY_COOLDOWN_MS}ms (failures=${h.consecutiveFailures})")
+        val now = System.currentTimeMillis()
+        val (failures, cooldown) = synchronized(healthLock) {
+            h.consecutiveFailures += 1
+            if (h.consecutiveFailures >= MAX_KEY_FAILURES) {
+                h.cooldownUntilMs = now + KEY_COOLDOWN_MS
+            }
+            h.consecutiveFailures to h.cooldownUntilMs
+        }
+        if (cooldown > now) {
+            Log.w(TAG, "key '${key.take(6)}...' disabled for ${KEY_COOLDOWN_MS}ms (failures=$failures)")
         } else {
-            Log.w(TAG, "key '${key.take(6)}...' failure ${h.consecutiveFailures}/$MAX_KEY_FAILURES")
+            Log.w(TAG, "key '${key.take(6)}...' failure $failures/$MAX_KEY_FAILURES")
         }
     }
 
@@ -95,14 +118,22 @@ class WanzhanApiSource(
             return@withContext SearchOutcome.Success(emptyList())
         }
 
-        val keysToTry = if (apiKeys.isEmpty()) listOf<String?>(null) else {
-            val now = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastSuccessTimestamp
+        if (lastSuccessTimestamp > 0 && elapsed < GLOBAL_MIN_INTERVAL_MS) {
+            val wait = GLOBAL_MIN_INTERVAL_MS - elapsed
+            Log.d(TAG, "global rate-limit, wait ${wait}ms (elapsed=${elapsed}ms)")
+            delay(wait)
+        }
+
+        val keysToTry = if (apiKeys.isEmpty()) {
+            listOf<String?>(null)
+        } else {
             val ordered = apiKeys.sortedBy { if (isKeyAvailable(it, now)) 0 else 1 }
-            if (ordered.none { isKeyAvailable(it, now) }) {
-                ordered
-            } else {
-                ordered.filter { isKeyAvailable(it, now) }
-            }
+            val available = ordered.filter { isKeyAvailable(it, now) }
+            if (available.isEmpty()) ordered else available
+        }.let { keys ->
+            if (keys.isNotEmpty() && keys.first() != null) keys + listOf(null) else keys
         }
 
         var lastError: String? = null
@@ -110,44 +141,39 @@ class WanzhanApiSource(
 
         for ((keyIdx, key) in keysToTry.withIndex()) {
             if (totalAttempts >= MAX_TOTAL_RETRIES) break
+            totalAttempts++
 
-            for (retry in 0 until MAX_RETRY_PER_KEY) {
-                if (totalAttempts >= MAX_TOTAL_RETRIES) break
-                totalAttempts++
+            if (keyIdx > 0) {
+                val wait = backoffMs(keyIdx)
+                Log.d(TAG, "backoff ${wait}ms before key #${keyIdx + 1}")
+                delay(wait)
+            }
 
-                if (keyIdx > 0 || retry > 0) {
-                    val wait = backoffMs(keyIdx + retry)
-                    Log.d(TAG, "backoff ${wait}ms before attempt total=$totalAttempts")
-                    delay(wait)
+            val outcome = doRequest(keyword, page, category, key)
+            when (outcome) {
+                is AttemptResult.Success -> {
+                    if (key != null) markKeySuccess(key)
+                    lastSuccessTimestamp = System.currentTimeMillis()
+                    return@withContext SearchOutcome.Success(outcome.results)
                 }
-
-                val outcome = doRequest(keyword, page, category, key)
-                when (outcome) {
-                    is AttemptResult.Success -> {
-                        if (key != null) markKeySuccess(key)
-                        return@withContext SearchOutcome.Success(outcome.results)
-                    }
-                    is AttemptResult.AuthError -> {
-                        if (key != null) markKeyFailure(key)
-                        lastError = outcome.message
-                        Log.w(TAG, "auth/quota error with key, try next: ${outcome.message}")
-                        break
-                    }
-                    is AttemptResult.NetworkError -> {
-                        if (key != null) markKeyFailure(key)
-                        lastError = outcome.message
-                        Log.w(TAG, "network error: ${outcome.message}, retry=${retry + 1}")
-                    }
-                    is AttemptResult.ParseError -> {
-                        lastError = outcome.message
-                        Log.w(TAG, "parse error: ${outcome.message}")
-                        return@withContext SearchOutcome.Failure(outcome.message, outcome.cause)
-                    }
+                is AttemptResult.AuthError -> {
+                    if (key != null) markKeyFailure(key)
+                    lastError = outcome.message
+                    Log.w(TAG, "auth/quota error, try next key: ${outcome.message}")
+                }
+                is AttemptResult.NetworkError -> {
+                    if (key != null) markKeyFailure(key)
+                    lastError = outcome.message
+                    Log.w(TAG, "network error, try next key: ${outcome.message}")
+                }
+                is AttemptResult.ParseError -> {
+                    Log.w(TAG, "parse error: ${outcome.message}")
+                    return@withContext SearchOutcome.Failure.parse(outcome.message, outcome.cause)
                 }
             }
         }
 
-        SearchOutcome.Failure(lastError ?: "所有重试均失败")
+        SearchOutcome.Failure.sourceDown(lastError ?: "所有重试均失败")
     }
 
     private sealed class AttemptResult {
@@ -167,16 +193,19 @@ class WanzhanApiSource(
         val url = urlBuilder.build().toString()
 
         return try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            client.newCall(request).execute().use { response ->
+            val request = HttpClient.newGet(url)
+            // We can't route through HttpClient.getString here because
+            // we need HTTP status code for the 401/403/429 -> AuthError
+            // path (HttpClient swallows the code). So we keep the raw
+            // OkHttp call local to this one method.
+            apiClient.newCall(request).execute().use { response ->
                 Log.d(TAG, "response: code=${response.code} bodyLength=${response.body?.contentLength() ?: -1}")
 
-                if (response.code == 429 || response.code == 401 || response.code == 403) {
-                    return AttemptResult.AuthError("HTTP ${response.code} (限流/鉴权)")
+                if (response.code == 429) {
+                    return AttemptResult.AuthError("万站API请求过于频繁(限流),请稍后再试")
+                }
+                if (response.code == 401 || response.code == 403) {
+                    return AttemptResult.AuthError("万站API鉴权失败(HTTP ${response.code})")
                 }
                 if (!response.isSuccessful) {
                     return AttemptResult.AuthError("HTTP ${response.code}")
@@ -185,7 +214,7 @@ class WanzhanApiSource(
                     ?: return AttemptResult.ParseError("响应体为空", null)
 
                 val root = try {
-                    JSONObject(body)
+                    Json.parseObject(body)
                 } catch (e: Exception) {
                     Log.e(TAG, "JSON parse failed: ${body.take(200)}", e)
                     return AttemptResult.ParseError("JSON 解析失败", e)
@@ -221,15 +250,16 @@ class WanzhanApiSource(
                         val item = arr.optJSONObject(i) ?: continue
                         val urlStr = item.optString("url", "")
                         if (urlStr.isBlank()) continue
+                        val title = item.optString("title", "")
                         val note = item.optString("note", "")
-                        val title = if (note.isBlank()) type else note
+                        val effectiveTitle = if (title.isNotBlank()) title else (if (note.isBlank()) type else note)
                         val source = item.optString("source", "")
                         val pwd = item.optString("password", "")
                         val date = item.optString("datetime", "")
                         val finalDate = if (date.isBlank() || date == "0001-01-01T00:00:00Z") "" else date
-                        val fullTitle = if (source.isBlank()) title else "$title · $source"
-                        val fileType = detectFileType(fullTitle)
-                        if (!matchesCategory(category, fullTitle, fileType)) continue
+                        val fullTitle = if (source.isBlank()) effectiveTitle else "$effectiveTitle · $source"
+                        val fileType = FileTypes.detectFromTitle(fullTitle)
+                        if (!CategoryRules.matchesByNetDisk(netDisk, fileType, category)) continue
                         results.add(
                             SearchResult(
                                 id = "wanzhan-$type-$i-${urlStr.hashCode()}",
@@ -241,8 +271,9 @@ class WanzhanApiSource(
                                 date = finalDate,
                                 sourceUrl = urlStr,
                                 sourceName = displayName,
+                                sourceId = id,
                                 category = category,
-                                fileType = null,
+                                fileType = fileType,
                                 isValid = true,
                                 requiresWebView = false,
                                 extractionCode = pwd.ifBlank { null }
@@ -260,18 +291,6 @@ class WanzhanApiSource(
         }
     }
 
-    private fun matchesCategory(category: ResourceCategory, title: String, fileType: String?): Boolean {
-        if (category == ResourceCategory.ALL) return true
-        val effectiveType = fileType ?: detectFileType(title)
-        val isEbook = effectiveType in listOf("pdf", "epub", "mobi", "txt", "ebook", "zip", "html", "azw3", "archive")
-        val isVideo = effectiveType == "video"
-        return when (category) {
-            ResourceCategory.EBOOK -> isEbook
-            ResourceCategory.MOVIE, ResourceCategory.TV -> isVideo
-            else -> true
-        }
-    }
-
     private fun mapCloudType(type: String): NetDiskType = when (type.lowercase()) {
         "baidu" -> NetDiskType.BAIDU
         "quark" -> NetDiskType.QUARK
@@ -279,18 +298,5 @@ class WanzhanApiSource(
         "aliyun", "aliyunpan" -> NetDiskType.ALIYUN
         "123", "123pan" -> NetDiskType.YUNPAN123
         else -> NetDiskType.OTHER
-    }
-
-    private fun detectFileType(title: String): String? {
-        val lower = title.lowercase()
-        return when {
-            lower.contains(".pdf") -> "pdf"
-            lower.contains(".epub") -> "epub"
-            lower.contains(".mobi") || lower.contains(".azw3") -> "mobi"
-            lower.contains(".txt") -> "txt"
-            lower.contains(".zip") || lower.contains(".rar") || lower.contains(".7z") -> "archive"
-            lower.contains(".mp4") || lower.contains(".mkv") || lower.contains(".avi") || lower.contains(".rmvb") || lower.contains(".ts") || lower.contains(".mov") || lower.contains(".flv") -> "video"
-            else -> null
-        }
     }
 }

@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.util.Log
-import java.io.File
 import androidx.core.content.ContextCompat
 import com.dashensou.app.App
 import com.dashensou.app.data.model.DownloadRecord
@@ -21,259 +20,412 @@ import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.util.NetDiskUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
-class DownloadManager(private val context: Context) {
+/**
+ * Owns two write paths into the device download subsystem:
+ *
+ *  1. [enqueueDirectDownload] is the path every net-disk-or-direct result
+ *     goes through. It writes bytes through OkHttp + MediaStore.Downloads
+ *     (Android 10+ scoped storage can't create Download/<subdir>/ through
+ *     the system DownloadManager without MANAGE_EXTERNAL_STORAGE). The
+ *     recorded `filePath` is the public "Download/Book/xxx.txt" string so
+ *     [com.dashensou.app.util.FileOpener] can re-locate the file later.
+ *
+ *  2. [openNetDiskApp] opens the installed net-disk app (夸克 / 度盘 / ...)
+ *     via scheme + chooser fallbacks. The system DownloadManager is not
+ *     involved — we never copy the bytes; the user's net-disk app does.
+ *
+ * P1#13: the old `downloadFile` / `downloadFileFallback` pair used an
+ * app-private fallback path "DaShenSou/<sub>/xxx.txt" with a lowercased
+ * subdirectory, and the *current* `enqueueDirectDownload` uses the public
+ * MediaStore path with an upper-cased subdir. The two paths had drifted
+ * so far that `FileOpener` needed a basename-only fallback to bridge
+ * between them. Now that every write goes through `enqueueDirectDownload`
+ * the legacy pair is dead code and the basename-only fallback is only
+ * there to rescue records written by older installs.
+ *
+ * P0#robustness: this is a process-wide singleton. The previous design
+ * constructed a fresh instance in MainActivity.onCreate, which registered
+ * a fresh BroadcastReceiver every time the Activity was recreated (e.g.
+ * rotation) and never unregistered the old one. The receiver is an
+ * anonymous class that holds a strong reference to the outer
+ * DownloadManager, so each unreleased receiver pinned the old Activity
+ * and the old OkHttp call scope. As a singleton we register once and own
+ * one scope. The [appContext] we keep is always the application
+ * Context so the lifetime is the process lifetime, not the Activity.
+ */
+object DownloadManager {
 
-    companion object {
-        private const val TAG = "DownloadManager"
+    private const val TAG = "DownloadManager"
+
+    @Volatile
+    private var appContext: Context? = null
+    private var androidDownloadManager: AndroidDownloadManager? = null
+    private var scope: CoroutineScope? = null
+    @Volatile
+    private var registered = false
+
+    /**
+     * Initialise the singleton. Idempotent — safe to call from
+     * Application.onCreate and from the first Activity that needs it.
+     * Subsequent calls are no-ops.
+     */
+    @Synchronized
+    fun init(context: Context) {
+        if (registered) return
+        val app = context.applicationContext
+        appContext = app
+        androidDownloadManager = app.getSystemService(Context.DOWNLOAD_SERVICE) as AndroidDownloadManager
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        registerReceiver(app)
+        registered = true
+        Log.i(TAG, "DownloadManager initialised (process-singleton)")
     }
 
-    private val androidDownloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as AndroidDownloadManager
-    private var downloadIdMap = mutableMapOf<Long, Long>()
-
-    init {
-        registerReceiver()
+    /**
+     * Cancel every in-flight download coroutine. We do NOT call
+     * this from a normal Activity lifecycle — the process-wide scope
+     * is the right lifetime for "I started this download in the
+     * background, it should finish even if the user closes the
+     * Activity". Tests / instrumentation that need a clean teardown
+     * are the primary caller.
+     */
+    @Synchronized
+    fun shutdown() {
+        scope?.cancel()
+        scope = null
+        registered = false
+        appContext?.let { runCatching { it.unregisterReceiver(downloadCompleteReceiver) } }
+        appContext = null
+        androidDownloadManager = null
     }
 
-    fun downloadFile(result: SearchResult, category: ResourceCategory) {
-        val fileName = getFileName(result.title, result.url)
-        val subDir = when (category) {
-            ResourceCategory.EBOOK -> "book"
-            ResourceCategory.MOVIE -> "movie"
-            ResourceCategory.TV -> "tv"
-            else -> "other"
-        }
-
-        val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?: context.filesDir
-        val targetDir = File(baseDir, "DaShenSou/$subDir")
-        if (!targetDir.exists()) {
-            targetDir.mkdirs()
-        }
-        val targetFile = File(targetDir, fileName)
-        val absolutePath = targetFile.absolutePath
-
-        val request = AndroidDownloadManager.Request(Uri.parse(result.url))
-            .setTitle(fileName)
-            .setDescription(result.description)
-            .setDestinationUri(Uri.fromFile(targetFile))
-            .setNotificationVisibility(AndroidDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
-
-        val downloadId = try {
-            androidDownloadManager.enqueue(request)
-        } catch (e: Exception) {
-            Log.e(TAG, "enqueue failed, fallback to external public dir", e)
-            return downloadFileFallback(result, category, fileName, subDir)
-        }
-
-        val record = DownloadRecord(
-            title = result.title,
-            url = result.url,
-            filePath = absolutePath,
-            fileSize = 0,
-            downloadSize = 0,
-            status = DownloadStatus.DOWNLOADING,
-            downloadTime = System.currentTimeMillis(),
-            netDiskType = result.netDiskType,
-            category = category
-        )
-
-        val id = runBlocking(Dispatchers.IO) {
-            App.database.downloadRecordDao().insertDownloadRecord(record.copy(downloadId = downloadId))
-        }
-        downloadIdMap[downloadId] = id
-    }
-
-    fun getDownloadProgress(downloadId: Long): Int {
-        val query = AndroidDownloadManager.Query().setFilterById(downloadId)
-        val cursor = androidDownloadManager.query(query)
-        return if (cursor.moveToFirst()) {
-            val bytesDownloaded = cursor.getInt(cursor.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-            val bytesTotal = cursor.getInt(cursor.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-            cursor.close()
-            if (bytesTotal > 0) (bytesDownloaded * 100 / bytesTotal) else 0
-        } else {
-            cursor.close()
-            0
-        }
-    }
-
-    fun cancelDownload(downloadId: Long) {
-        androidDownloadManager.remove(downloadId)
-        CoroutineScope(Dispatchers.IO).launch {
-            downloadIdMap[downloadId]?.let { recordId ->
-                val record = App.database.downloadRecordDao().getDownloadRecordById(recordId)
-                record?.let {
-                    App.database.downloadRecordDao().updateDownloadRecord(it.copy(status = DownloadStatus.PAUSED))
-                }
-            }
-        }
-    }
-
-    fun queryAndUpdateProgress() {
-        CoroutineScope(Dispatchers.IO).launch {
-            val allRecords = App.database.downloadRecordDao().getAllDownloadRecords()
-            allRecords.collect { records ->
-                for (record in records) {
-                    if (record.downloadId > 0 && record.status == DownloadStatus.DOWNLOADING) {
-                        val progress = getDownloadProgress(record.downloadId)
-                        if (progress >= 0) {
-                            val query = AndroidDownloadManager.Query().setFilterById(record.downloadId)
-                            val cursor = androidDownloadManager.query(query)
-                            if (cursor.moveToFirst()) {
-                                val bytesDownloaded = cursor.getLong(cursor.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                                val bytesTotal = cursor.getLong(cursor.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                                cursor.close()
-                                App.database.downloadRecordDao().updateDownloadRecord(
-                                    record.copy(downloadSize = bytesDownloaded, fileSize = bytesTotal)
-                                )
-                            } else {
-                                cursor.close()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun getFileName(title: String, url: String): String {
-        val cleaned = title.replace("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]".toRegex(), "_")
-        val baseName = if (cleaned.length > 50) cleaned.substring(0, 50) else cleaned
-        
-        var extension = ".download"
-        val lowerUrl = url.lowercase()
-        val knownExtensions = listOf(".zip", ".rar", ".7z", ".pdf", ".epub", ".mobi", ".azw3", ".txt", ".mp4", ".mkv", ".avi", ".rmvb", ".ts", ".mov", ".flv", ".mp3")
-        for (ext in knownExtensions) {
-            if (lowerUrl.contains(ext)) {
-                extension = ext
-                break
-            }
-        }
-        return baseName + extension
-    }
-
-    private fun downloadFileFallback(
-        result: SearchResult,
+    /**
+     * Enqueue a download when we already know the direct URL (e.g. the search
+     * source resolved a pan.baidu link, or aiqu225 already gave us a .txt
+     * mirror). This bypasses the WebView intermediate page entirely.
+     *
+     * Implementation note: starting with Android 10 scoped storage, the
+     * system's DownloadManager cannot write into Download/<subdir>/ for an
+     * app that doesn't hold MANAGE_EXTERNAL_STORAGE. To get a stable
+     * "Download/Book/xxx" landing path on Android 10+ we hand the bytes
+     * through OkHttp and persist them via MediaStore.Downloads, which is
+     * the only API that can still create the subfolder through scoped
+     * storage without elevated permissions.
+     *
+     * [fileType] (when non-null) is the extension hint that came from the
+     * search source — e.g. "epub" / "pdf" / "mobi". It's preferred over
+     * the URL-extension guess below because a short-link URL or a content
+     * distribution host might not actually contain the real extension in
+     * its path.
+     */
+    fun enqueueDirectDownload(
+        title: String,
+        url: String,
         category: ResourceCategory,
-        fileName: String,
-        subDir: String
+        fileType: String? = null
     ) {
-        val standardDir = Environment.DIRECTORY_DOWNLOADS
-        try {
-            val request = AndroidDownloadManager.Request(Uri.parse(result.url))
-                .setTitle(fileName)
-                .setDescription(result.description)
-                .setDestinationInExternalPublicDir(standardDir, "DaShenSou_${subDir}_$fileName")
-                .setNotificationVisibility(AndroidDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        val ctx = appContext ?: run {
+            Log.w(TAG, "enqueueDirectDownload called before init()")
+            return
+        }
+        val currentScope = scope ?: run {
+            Log.w(TAG, "enqueueDirectDownload called after shutdown()")
+            return
+        }
+        currentScope.launch {
+            val fileName = getFileName(title, url, fileType)
+            val subDir = subDirFor(category)
+            val finalPath = "${Environment.DIRECTORY_DOWNLOADS}/$subDir/$fileName"
 
-            val downloadId = androidDownloadManager.enqueue(request)
+            Log.i(TAG, "enqueueDirectDownload: title=$title url=$url subDir=$subDir fileName=$fileName")
 
-            val record = DownloadRecord(
-                title = result.title,
-                url = result.url,
-                filePath = "$standardDir/DaShenSou_${subDir}_$fileName",
-                fileSize = 0,
-                downloadSize = 0,
-                status = DownloadStatus.DOWNLOADING,
-                downloadTime = System.currentTimeMillis(),
-                netDiskType = result.netDiskType,
-                category = category
+            val recordId = App.database.downloadRecordDao().insertDownloadRecord(
+                DownloadRecord(
+                    title = title,
+                    url = url,
+                    filePath = finalPath,
+                    fileSize = 0,
+                    downloadSize = 0,
+                    status = DownloadStatus.DOWNLOADING,
+                    downloadTime = System.currentTimeMillis(),
+                    netDiskType = NetDiskType.DIRECT_URL,
+                    category = category,
+                    downloadId = 0L
+                )
             )
 
-            val id = runBlocking(Dispatchers.IO) {
-                App.database.downloadRecordDao().insertDownloadRecord(record)
+            try {
+                val ok = DirectDownloader.download(
+                    context = ctx,
+                    url = url,
+                    displayName = fileName,
+                    subDir = subDir
+                )
+                Log.i(TAG, "enqueueDirectDownload: result=$ok")
+                val dao = App.database.downloadRecordDao()
+                val current = dao.getDownloadRecordById(recordId) ?: return@launch
+                dao.updateDownloadRecord(
+                    current.copy(status = if (ok) DownloadStatus.COMPLETED else DownloadStatus.FAILED)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "enqueueDirectDownload: download body failed", e)
+                val dao = App.database.downloadRecordDao()
+                val current = dao.getDownloadRecordById(recordId) ?: return@launch
+                dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
             }
-            downloadIdMap[downloadId] = id
-            Log.i(TAG, "fallback enqueue success, id=$downloadId")
-        } catch (e: Exception) {
-            Log.e(TAG, "fallback enqueue also failed for ${result.url}", e)
         }
     }
 
-    private fun registerReceiver() {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val downloadId = intent?.getLongExtra(AndroidDownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: return
-                if (downloadId == -1L) return
+    private fun subDirFor(category: ResourceCategory): String = when (category) {
+        ResourceCategory.EBOOK -> "Book"
+        ResourceCategory.MOVIE -> "Movie"
+        ResourceCategory.TV -> "TV"
+        else -> "Other"
+    }
 
-                val query = AndroidDownloadManager.Query().setFilterById(downloadId)
-                val cursor = androidDownloadManager.query(query)
-                if (cursor.moveToFirst()) {
-                    val status = cursor.getInt(cursor.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_STATUS))
-                    val recordId = downloadIdMap[downloadId]
+    /**
+     * Pause an in-flight system-DownloadManager download. We don't try to
+     * mark the DB row PAUSED directly — the DownloadProgressPoller will
+     * observe the cancelled status in its next tick and reconcile. The
+     * records that go through [enqueueDirectDownload] carry
+     * `downloadId = 0`, in which case the system DM has no id to cancel;
+     * the in-process coroutine in [DirectDownloader] keeps running and
+     * the row stays DOWNLOADING until it finishes (or the user kills
+     * the app). That's an honest trade-off: re-implementing a
+     * OkHttp-call-level pause for the in-process path is a much larger
+     * change than the user actually wants.
+     */
+    fun cancelDownload(downloadId: Long) {
+        if (downloadId <= 0) return
+        val dm = androidDownloadManager ?: run {
+            Log.w(TAG, "cancelDownload called before init()")
+            return
+        }
+        runCatching { dm.remove(downloadId) }
+            .onFailure { Log.w(TAG, "androidDownloadManager.remove($downloadId) failed", it) }
+    }
 
-                    CoroutineScope(Dispatchers.IO).launch {
-                        recordId?.let { id ->
-                            val record = App.database.downloadRecordDao().getDownloadRecordById(id)
-                            record?.let {
-                                val newStatus = when (status) {
-                                    AndroidDownloadManager.STATUS_SUCCESSFUL -> DownloadStatus.COMPLETED
-                                    AndroidDownloadManager.STATUS_FAILED -> DownloadStatus.FAILED
-                                    AndroidDownloadManager.STATUS_PAUSED -> DownloadStatus.PAUSED
-                                    else -> DownloadStatus.DOWNLOADING
-                                }
-                                App.database.downloadRecordDao().updateDownloadRecord(it.copy(status = newStatus))
-                            }
-                        }
-                    }
-                }
-                cursor.close()
-            }
+    private fun getFileName(title: String, url: String, fileType: String? = null): String {
+        val cleaned = title.replace("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]".toRegex(), "_")
+        val baseName = if (cleaned.length > 50) cleaned.substring(0, 50) else cleaned
+
+        // 1) Trust the fileType hint from the search source first — it's the
+        //    most reliable signal (e.g. "epub", "pdf", "mobi", "video", "zip").
+        val knownExtensions = listOf(
+            "epub", "mobi", "azw3", "pdf", "txt",
+            "zip", "rar", "7z", "archive",
+            "mp4", "mkv", "avi", "rmvb", "ts", "mov", "flv",
+            "mp3", "m4a"
+        )
+        val extFromHint = fileType?.lowercase()?.takeIf { it in knownExtensions }
+        if (extFromHint != null) {
+            return baseName + "." + extFromHint
         }
 
+        // 2) Otherwise parse the URL's *path* (query string ignored) to find
+        //    the real extension. We deliberately do NOT scan the full URL —
+        //    a CDN link like "...?type=txtbook&id=zip-1" must not be mistaken
+        //    for a .txt file just because ".txt" appears in the query.
+        val extFromPath = url.substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('/', "")
+            .substringAfterLast('.', "")
+            .lowercase()
+            .takeIf { it.isNotBlank() && it in knownExtensions }
+        if (extFromPath != null) {
+            return baseName + "." + extFromPath
+        }
+
+        // 3) Last resort: no extension info, leave it as `.download` so the
+        //    user / system can rename later. Never guess.
+        return baseName + ".download"
+    }
+
+    private fun registerReceiver(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.registerReceiver(
                 context,
-                receiver,
+                downloadCompleteReceiver,
                 IntentFilter(AndroidDownloadManager.ACTION_DOWNLOAD_COMPLETE),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
         } else {
-            context.registerReceiver(receiver, IntentFilter(AndroidDownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(
+                downloadCompleteReceiver,
+                IntentFilter(AndroidDownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            )
+        }
+    }
+
+    /**
+     * The receiver is held in a singleton field (not a captured local)
+     * so [shutdown] can call [Context.unregisterReceiver] against the
+     * same instance. Anonymous-class receivers in the previous design
+     * couldn't be unregistered.
+     */
+    private val downloadCompleteReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val downloadId = intent?.getLongExtra(AndroidDownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: return
+            if (downloadId == -1L) return
+
+            val dm = androidDownloadManager ?: return
+            val currentScope = scope ?: return
+
+            val cursor = try {
+                dm.query(AndroidDownloadManager.Query().setFilterById(downloadId))
+            } catch (e: Exception) {
+                Log.w(TAG, "query($downloadId) failed", e)
+                return
+            } ?: return
+
+            cursor.use { c ->
+                if (!c.moveToFirst()) return
+                val status = c.getInt(c.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_STATUS))
+                val bytesDownloaded = c.getLong(c.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                val bytesTotal = c.getLong(c.getColumnIndexOrThrow(AndroidDownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+
+                currentScope.launch {
+                    App.database.downloadRecordDao().getDownloadRecordByDownloadId(downloadId)?.let { record ->
+                        val newStatus = when (status) {
+                            AndroidDownloadManager.STATUS_SUCCESSFUL -> DownloadStatus.COMPLETED
+                            AndroidDownloadManager.STATUS_FAILED -> DownloadStatus.FAILED
+                            AndroidDownloadManager.STATUS_PAUSED -> DownloadStatus.PAUSED
+                            else -> record.status
+                        }
+                        App.database.downloadRecordDao().updateDownloadRecord(
+                            record.copy(
+                                status = newStatus,
+                                downloadSize = bytesDownloaded,
+                                fileSize = bytesTotal
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    enum class TorrentOpenResult {
+        SUCCESS,
+        NOT_INSTALLED,
+        OPEN_FAILED
+    }
+
+    /** magnet / ed2k — Quark Browser supports offline download via direct or quark:// URI. */
+    fun openTorrentInQuark(url: String): TorrentOpenResult {
+        val ctx = appContext ?: run {
+            Log.w(TAG, "openTorrentInQuark called before init()")
+            return TorrentOpenResult.OPEN_FAILED
+        }
+        if (!com.dashensou.app.util.UrlKinds.isTorrentLike(url)) {
+            return TorrentOpenResult.OPEN_FAILED
+        }
+        val trimmed = url.trim()
+        val installedPkgs = NetDiskUtils.QUARK_PACKAGE_CANDIDATES.filter { isAppInstalled(ctx, it) }
+        if (installedPkgs.isEmpty()) {
+            Log.w(TAG, "openTorrentInQuark: no Quark package found among ${NetDiskUtils.QUARK_PACKAGE_CANDIDATES}")
+            return TorrentOpenResult.NOT_INSTALLED
+        }
+        Log.i(TAG, "openTorrentInQuark: installed=$installedPkgs url=${trimmed.take(80)}")
+
+        val urisToTry = listOf(trimmed, NetDiskUtils.buildQuarkSchemeUrl(trimmed))
+        for (pkg in installedPkgs) {
+            for (uri in urisToTry) {
+                if (startViewIntent(ctx, uri, pkg)) {
+                    Log.i(TAG, "openTorrentInQuark success: uri=$uri pkg=$pkg")
+                    return TorrentOpenResult.SUCCESS
+                }
+            }
+        }
+        for (uri in urisToTry) {
+            if (startViewChooser(ctx, uri, "用夸克打开")) {
+                Log.i(TAG, "openTorrentInQuark chooser success: uri=$uri")
+                return TorrentOpenResult.SUCCESS
+            }
+        }
+        Log.w(TAG, "openTorrentInQuark: all strategies failed")
+        return TorrentOpenResult.OPEN_FAILED
+    }
+
+    fun isQuarkInstalled(): Boolean {
+        val ctx = appContext ?: return false
+        return NetDiskUtils.QUARK_PACKAGE_CANDIDATES.any { isAppInstalled(ctx, it) }
+    }
+
+    private fun startViewIntent(ctx: Context, uri: String, packageName: String): Boolean {
+        if (uri.isBlank()) return false
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.setPackage(packageName)
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.d(TAG, "startViewIntent failed: uri=$uri pkg=$packageName (${e.message})")
+            false
+        }
+    }
+
+    private fun startViewChooser(ctx: Context, uri: String, title: String): Boolean {
+        if (uri.isBlank()) return false
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val chooser = Intent.createChooser(intent, title)
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(chooser)
+            true
+        } catch (e: Exception) {
+            Log.d(TAG, "startViewChooser failed: uri=$uri (${e.message})")
+            false
         }
     }
 
     fun openNetDiskApp(result: SearchResult): Boolean {
+        val ctx = appContext ?: run {
+            Log.w(TAG, "openNetDiskApp called before init()")
+            return false
+        }
         val packageName = NetDiskUtils.getNetDiskPackageName(result.netDiskType)
         Log.i(TAG, "openNetDiskApp: type=${result.netDiskType} pkg=$packageName url=${result.url}")
 
         if (packageName == null) {
             Log.w(TAG, "no package mapping for type=${result.netDiskType}")
-            return openByChooser(result)
+            return openByChooser(ctx, result)
         }
 
-        if (isAppInstalled(packageName)) {
+        if (isAppInstalled(ctx, packageName)) {
             Log.i(TAG, "package installed: $packageName, trying to open directly with URI")
 
-            if (openBySchemeWithPackage(result, packageName)) {
+            if (openBySchemeWithPackage(ctx, result, packageName)) {
                 return true
             }
 
-            if (openByChooserWithPackage(result, packageName)) {
+            if (openByChooserWithPackage(ctx, result, packageName)) {
                 return true
             }
         } else {
             Log.w(TAG, "package not installed: $packageName")
         }
 
-        return openByChooser(result)
+        return openByChooser(ctx, result)
     }
 
-    private fun isAppInstalled(packageName: String): Boolean {
+    private fun isAppInstalled(ctx: Context, packageName: String): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(
+                ctx.packageManager.getPackageInfo(
                     packageName,
                     PackageManager.PackageInfoFlags.of(0)
                 )
             } else {
                 @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(packageName, 0)
+                ctx.packageManager.getPackageInfo(packageName, 0)
             }
             true
         } catch (e: PackageManager.NameNotFoundException) {
@@ -284,45 +436,14 @@ class DownloadManager(private val context: Context) {
         }
     }
 
-    private fun openByScheme(result: SearchResult): Boolean {
-        val schemeUri = NetDiskUtils.buildNetDiskIntentUrl(result.url, result.netDiskType)
-        if (schemeUri == result.url) return false
-        return try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(schemeUri))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            Log.i(TAG, "openByScheme success: $schemeUri")
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "openByScheme failed: $schemeUri", e)
-            false
-        }
-    }
-
-    private fun openByChooser(result: SearchResult): Boolean {
-        if (result.url.isBlank() || !result.url.startsWith("http")) return false
-        return try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(result.url))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            val chooser = Intent.createChooser(intent, "用网盘打开")
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(chooser)
-            Log.i(TAG, "openByChooser success: ${result.url}")
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "openByChooser failed", e)
-            false
-        }
-    }
-
-    private fun openBySchemeWithPackage(result: SearchResult, packageName: String): Boolean {
+    private fun openBySchemeWithPackage(ctx: Context, result: SearchResult, packageName: String): Boolean {
         val schemeUri = NetDiskUtils.buildNetDiskIntentUrl(result.url, result.netDiskType)
         if (schemeUri == result.url) return false
         return try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(schemeUri))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             intent.setPackage(packageName)
-            context.startActivity(intent)
+            ctx.startActivity(intent)
             Log.i(TAG, "openBySchemeWithPackage success: $schemeUri pkg=$packageName")
             true
         } catch (e: Exception) {
@@ -331,17 +452,33 @@ class DownloadManager(private val context: Context) {
         }
     }
 
-    private fun openByChooserWithPackage(result: SearchResult, packageName: String): Boolean {
+    private fun openByChooserWithPackage(ctx: Context, result: SearchResult, packageName: String): Boolean {
         if (result.url.isBlank() || !result.url.startsWith("http")) return false
         return try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(result.url))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             intent.setPackage(packageName)
-            context.startActivity(intent)
+            ctx.startActivity(intent)
             Log.i(TAG, "openByChooserWithPackage success: ${result.url} pkg=$packageName")
             true
         } catch (e: Exception) {
             Log.w(TAG, "openByChooserWithPackage failed", e)
+            false
+        }
+    }
+
+    private fun openByChooser(ctx: Context, result: SearchResult): Boolean {
+        if (result.url.isBlank() || !result.url.startsWith("http")) return false
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(result.url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val chooser = Intent.createChooser(intent, "用网盘打开")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(chooser)
+            Log.i(TAG, "openByChooser success: ${result.url}")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "openByChooser failed", e)
             false
         }
     }

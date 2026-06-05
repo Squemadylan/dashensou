@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     app:cardCornerRadius="@dimen/corner_radius_large"
@@ -38,7 +39,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textSize="@dimen/text_size_small"
-                android:textColor="@color/accent"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
                 android:background="@drawable/bg_tag"
                 android:paddingLeft="@dimen/padding_small"
                 android:paddingRight="@dimen/padding_small"
@@ -82,12 +84,27 @@
 
         </LinearLayout>
 
+        <!-- P1#17: source provenance row. Pairs "来源: 万站API (聚合搜索)"
+             underneath the size/date so users can see which aggregator
+             surfaced this hit. The hint-color text is deliberately
+             dimmer than the size/date row so it reads as metadata. -->
+        <TextView
+            android:id="@+id/result_source_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="@dimen/text_size_small"
+            android:textColor="@color/text_hint"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="来源: 万站API (聚合搜索)" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/result_download_btn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/margin_medium"
-            android:text="获取资源"
+            android:text="打开网盘"
             android:textSize="@dimen/text_size_normal"
             android:textStyle="bold"
             android:background="@drawable/bg_neon_button"

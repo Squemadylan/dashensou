@@ -2,61 +2,60 @@ package com.dashensou.app.util
 
 import com.dashensou.app.data.model.NetDiskType
 
+/**
+ * Net-disk app package + intent scheme table. The other
+ * name-related helpers live in [DiskLabels].
+ */
 object NetDiskUtils {
 
-    fun getNetDiskType(url: String): NetDiskType {
-        return when {
-            url.contains("pan.baidu.com") -> NetDiskType.BAIDU
-            url.contains("pan.quark.cn") -> NetDiskType.QUARK
-            url.contains("pan.xunlei.com") -> NetDiskType.XUNLEI
-            url.contains("www.aliyundrive.com") || url.contains("aliyundrive.cn") -> NetDiskType.ALIYUN
-            url.contains("123pan.com") -> NetDiskType.YUNPAN123
-            else -> {
-                if (isDirectDownloadUrl(url)) {
-                    NetDiskType.DIRECT_URL
-                } else {
-                    NetDiskType.OTHER
-                }
-            }
-        }
+    /** Quark browser / Quark pan — either may handle magnet & share links. */
+    val QUARK_PACKAGE_CANDIDATES: List<String> = listOf(
+        "com.quark.browser",
+        "com.quark.pan"
+    )
+
+    /**
+     * Map a [NetDiskType] to the package name of its Android client.
+     * Returns null for [NetDiskType.DIRECT_URL] / [NetDiskType.OTHER]
+     * (no app to launch).
+     */
+    fun getNetDiskPackageName(type: NetDiskType): String? = when (type) {
+        NetDiskType.BAIDU -> "com.baidu.netdisk"
+        NetDiskType.QUARK -> QUARK_PACKAGE_CANDIDATES.first()
+        NetDiskType.XUNLEI -> "com.xunlei.downloadprovider"
+        NetDiskType.ALIYUN -> "com.alicloud.databox"
+        NetDiskType.YUNPAN123 -> "com.yunpan.www"
+        else -> null
     }
 
-    fun isDirectDownloadUrl(url: String): Boolean {
-        val extensions = listOf(".txt", ".pdf", ".epub", ".mobi", ".azw3", ".mp3", ".mp4", ".mkv", ".avi", ".zip", ".rar", ".7z")
-        return extensions.any { url.lowercase().contains(it) }
+    /**
+     * Build the custom-scheme URL the net-disk app is registered to
+     * receive. Falls back to the original https:// URL for types
+     * with no custom scheme (xunlei / unknown).
+     */
+    /** Same scheme used for pan.quark.cn shares — works as magnet/ed2k fallback. */
+    fun buildQuarkSchemeUrl(url: String): String = "quark://$url"
+
+    fun buildNetDiskIntentUrl(url: String, type: NetDiskType): String = when (type) {
+        NetDiskType.BAIDU -> "bdpan://$url"
+        NetDiskType.QUARK -> buildQuarkSchemeUrl(url)
+        NetDiskType.XUNLEI -> url
+        NetDiskType.ALIYUN -> "aliyunpan://$url"
+        NetDiskType.YUNPAN123 -> "pan123://$url"
+        else -> url
     }
 
-    fun getNetDiskTypeName(type: NetDiskType): String {
-        return when (type) {
-            NetDiskType.BAIDU -> "百度网盘"
-            NetDiskType.QUARK -> "夸克网盘"
-            NetDiskType.XUNLEI -> "迅雷网盘"
-            NetDiskType.ALIYUN -> "阿里云盘"
-            NetDiskType.YUNPAN123 -> "123云盘"
-            NetDiskType.DIRECT_URL -> "直接下载"
-            else -> "其他"
-        }
-    }
-
-    fun getNetDiskPackageName(type: NetDiskType): String? {
-        return when (type) {
-            NetDiskType.BAIDU -> "com.baidu.netdisk"
-            NetDiskType.QUARK -> "com.quark.browser"
-            NetDiskType.XUNLEI -> "com.xunlei.downloadprovider"
-            NetDiskType.ALIYUN -> "com.alicloud.databox"
-            NetDiskType.YUNPAN123 -> "com.yunpan.www"
-            else -> null
-        }
-    }
-
-    fun buildNetDiskIntentUrl(url: String, type: NetDiskType): String {
-        return when (type) {
-            NetDiskType.BAIDU -> "bdpan://$url"
-            NetDiskType.QUARK -> "quark://$url"
-            NetDiskType.XUNLEI -> url
-            NetDiskType.ALIYUN -> "aliyunpan://$url"
-            NetDiskType.YUNPAN123 -> "pan123://$url"
-            else -> url
-        }
+    /**
+     * Append an extraction code to a net-disk share URL when the link
+     * itself does not already carry one. Baidu / Quark / Xunlei / Aliyun
+     * clients recognise `?pwd=` (or `&pwd=`) and auto-fill the code.
+     */
+    fun appendExtractionCode(url: String, type: NetDiskType, code: String?): String {
+        val pwd = code?.trim()?.takeIf { it.isNotBlank() } ?: return url
+        if (url.isBlank()) return url
+        val lower = url.lowercase()
+        if (lower.contains("pwd=") || lower.contains("password=")) return url
+        val sep = if (url.contains('?')) "&" else "?"
+        return "$url${sep}pwd=$pwd"
     }
 }

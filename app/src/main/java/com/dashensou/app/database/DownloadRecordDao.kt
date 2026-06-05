@@ -26,4 +26,11 @@ interface DownloadRecordDao {
 
     @Query("SELECT * FROM download_records WHERE id = :id LIMIT 1")
     suspend fun getDownloadRecordById(id: Long): DownloadRecord?
+
+    /**
+     * Lookup by the system DownloadManager id, used to reconcile the
+     * DB row when ACTION_DOWNLOAD_COMPLETE fires.
+     */
+    @Query("SELECT * FROM download_records WHERE downloadId = :downloadId LIMIT 1")
+    suspend fun getDownloadRecordByDownloadId(downloadId: Long): DownloadRecord?
 }

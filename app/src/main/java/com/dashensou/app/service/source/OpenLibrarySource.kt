@@ -4,32 +4,20 @@ import android.util.Log
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
+import com.dashensou.app.net.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 
-class OpenLibrarySource(
-    private val client: OkHttpClient = defaultClient()
-) : SearchSource {
+class OpenLibrarySource : SearchSource {
 
     override val id = "openlibrary"
-    override val displayName = "Open Library (元数据)"
+    override val displayName = "海外图书"
     override var enabled: Boolean = true
 
     companion object {
         private const val TAG = "OpenLibrarySource"
         private const val BASE_URL = "https://openlibrary.org/search.json"
-        private const val USER_AGENT = "DaShenSou/1.0 (Android)"
-
-        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
-            .build()
     }
 
     override suspend fun search(
@@ -52,27 +40,15 @@ class OpenLibrarySource(
             .toString()
         Log.i(TAG, "search: keyword='$keyword' page=$page url=$url")
 
-        try {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .get()
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return@withContext SearchOutcome.Failure("HTTP ${response.code}")
-            }
-            val body = response.body?.string()
-                ?: return@withContext SearchOutcome.Failure("响应体为空")
-            val root = JSONObject(body)
-            val docs = root.optJSONArray("docs")
-                ?: return@withContext SearchOutcome.Success(emptyList())
+        val root = HttpClient.getJson(url) ?: return@withContext SearchOutcome.Failure.sourceDown("响应为空或网络异常")
+        val docs = root.optJSONArray("docs")
+            ?: return@withContext SearchOutcome.Success(emptyList())
 
+        try {
             val results = mutableListOf<SearchResult>()
             val len = docs.length()
             for (i in 0 until len) {
-                val doc = docs.optJSONObject(i)
-                if (doc == null) continue
+                val doc = docs.optJSONObject(i) ?: continue
                 val title = doc.optString("title", "")
                 if (title.isBlank()) continue
                 val authorsArr = doc.optJSONArray("author_name")
@@ -106,6 +82,7 @@ class OpenLibrarySource(
                         date = if (year > 0) year.toString() else "",
                         sourceUrl = detailUrl,
                         sourceName = displayName,
+                        sourceId = id,
                         category = ResourceCategory.EBOOK,
                         fileType = "ebook",
                         isValid = true,
@@ -116,12 +93,9 @@ class OpenLibrarySource(
             }
             Log.i(TAG, "parsed: count=${results.size}")
             SearchOutcome.Success(results)
-        } catch (e: IOException) {
-            Log.e(TAG, "IO failed: ${e.message}", e)
-            SearchOutcome.Failure("网络异常: ${e.message ?: "未知"}", e)
         } catch (e: Exception) {
-            Log.e(TAG, "failed: ${e.message}", e)
-            SearchOutcome.Failure("解析失败: ${e.message ?: "未知"}", e)
+            Log.e(TAG, "parse failed: ${e.message}", e)
+            SearchOutcome.Failure.parse("解析失败: ${e.message ?: "未知"}", e)
         }
     }
 }

@@ -5,11 +5,11 @@
         android:icon="@drawable/ic_nav_search"
         android:title="搜索"/>
     <item
-        android:id="@+id/nav_history"
-        android:icon="@drawable/ic_nav_history"
-        android:title="历史"/>
-    <item
         android:id="@+id/nav_download"
         android:icon="@drawable/ic_nav_download"
         android:title="下载"/>
+    <item
+        android:id="@+id/nav_mine"
+        android:icon="@drawable/ic_nav_mine"
+        android:title="我的"/>
 </menu>

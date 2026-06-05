@@ -77,6 +77,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/margin_medium"
+                    android:background="@color/bg_card"
                     app:tabMode="scrollable"
                     app:tabGravity="fill"
                     app:tabBackground="@drawable/bg_category_tab"
@@ -98,12 +99,7 @@
                     <com.google.android.material.tabs.TabItem
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="电影"/>
-
-                    <com.google.android.material.tabs.TabItem
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="剧集"/>
+                        android:text="网盘"/>
 
                 </com.google.android.material.tabs.TabLayout>
 
@@ -114,37 +110,251 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/search_results"
+                <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:padding="@dimen/padding_medium"/>
+                    android:layout_height="match_parent">
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/search_results"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:padding="@dimen/padding_medium"/>
+
+                    <TextView
+                        android:id="@+id/search_empty"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:padding="@dimen/padding_large"
+                        android:text="请输入关键词开始搜索"
+                        android:textSize="@dimen/text_size_medium"
+                        android:textColor="@color/text_hint"
+                        android:visibility="gone"/>
+
+                </FrameLayout>
 
             </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/history_page"
+            android:id="@+id/mine_page"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:visibility="gone"
-            android:padding="@dimen/padding_medium">
+            android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📋 搜索历史"
-                android:textSize="@dimen/text_size_xlarge"
-                android:textColor="@color/text_primary"
-                android:textStyle="bold"
-                android:layout_marginBottom="@dimen/margin_medium"/>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/history_results"
+            <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
+                android:layout_height="match_parent"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/padding_large">
+
+                    <!-- Header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="@dimen/padding_medium"
+                        android:background="@drawable/bg_search_bar"
+                        android:layout_marginBottom="@dimen/margin_large">
+
+                        <ImageView
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:src="@drawable/ic_lightning_crown"
+                            android:contentDescription="@string/app_name"/>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/margin_medium"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/app_name"
+                                android:textSize="@dimen/text_size_title"
+                                android:textColor="@color/text_primary"
+                                android:textStyle="bold"/>
+
+                            <TextView
+                                android:id="@+id/mine_version"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:textSize="@dimen/text_size_small"
+                                android:textColor="@color/text_secondary"/>
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- Feedback section -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="反馈与社区"
+                        android:textSize="@dimen/text_size_medium"
+                        android:textColor="@color/text_secondary"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="@dimen/margin_small"/>
+
+                    <LinearLayout
+                        android:id="@+id/mine_qq_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="@dimen/padding_medium"
+                        android:background="@drawable/bg_search_bar"
+                        android:layout_marginBottom="@dimen/margin_small"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground">
+
+                        <TextView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:gravity="center"
+                            android:text="💬"
+                            android:textSize="22sp"
+                            android:background="@color/bg_card"/>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/margin_medium"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="加入 QQ 群"
+                                android:textSize="@dimen/text_size_normal"
+                                android:textColor="@color/text_primary"
+                                android:textStyle="bold"/>
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="群号：182225274（点击跳转加群）"
+                                android:textSize="@dimen/text_size_small"
+                                android:textColor="@color/text_secondary"/>
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/mine_copy_qq"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="@dimen/padding_medium"
+                        android:background="@drawable/bg_search_bar"
+                        android:layout_marginBottom="@dimen/margin_large"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground">
+
+                        <TextView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:gravity="center"
+                            android:text="📋"
+                            android:textSize="22sp"
+                            android:background="@color/bg_card"/>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/margin_medium"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="复制 QQ 群号"
+                                android:textSize="@dimen/text_size_normal"
+                                android:textColor="@color/text_primary"
+                                android:textStyle="bold"/>
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="不方便跳转时，可手动复制后搜索"
+                                android:textSize="@dimen/text_size_small"
+                                android:textColor="@color/text_secondary"/>
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- Sources section -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="搜索数据源"
+                        android:textSize="@dimen/text_size_medium"
+                        android:textColor="@color/text_secondary"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="@dimen/margin_small"/>
+
+                    <LinearLayout
+                        android:id="@+id/mine_sources_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="@dimen/padding_medium"
+                        android:background="@drawable/bg_search_bar"
+                        android:layout_marginBottom="@dimen/margin_small"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/padding_small"
+                        android:layout_marginBottom="@dimen/margin_large"
+                        android:text="@string/source_toggle_hint"
+                        android:textSize="@dimen/text_size_small"
+                        android:textColor="@color/text_hint"/>
+
+                    <!-- About section -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="关于"
+                        android:textSize="@dimen/text_size_medium"
+                        android:textColor="@color/text_secondary"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="@dimen/margin_small"/>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="@dimen/padding_medium"
+                        android:background="@drawable/bg_search_bar"
+                        android:text="@string/mine_about"
+                        android:textSize="@dimen/text_size_small"
+                        android:textColor="@color/text_secondary"
+                        android:lineSpacingExtra="3dp"/>
+
+                </LinearLayout>
+
+            </ScrollView>
 
         </LinearLayout>
 

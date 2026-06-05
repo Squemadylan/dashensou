@@ -27,6 +27,12 @@
     <string name="clear_history">清空历史</string>
     <string name="confirm_clear">确定清空历史记录吗？</string>
 
+    <string name="mine_about">大神搜是一款聚合多个网盘搜索源的阅读/影视资源检索工具，不存储任何文件，仅做结果聚合与跳转。\n\n如发现某源失效、结果不准确，或希望新增数据源，欢迎加入 QQ 群反馈。</string>
+
+    <string name="source_enabled">已启用</string>
+    <string name="source_disabled">已停用</string>
+    <string name="source_toggle_hint">停用后下次搜索将不再请求该来源,设置自动保存</string>
+
     <string name="recommend">为你推荐</string>
 
     <string name="netdisk_baidu">百度网盘</string>
@@ -48,6 +54,12 @@
     <string name="netdisk_opened">已打开网盘</string>
     <string name="choose_netdisk_app">选择网盘应用</string>
     <string name="close">关闭</string>
+
+    <string name="slow_page_title">网络有点慢</string>
+    <string name="slow_page_message">页面加载超过 10 秒未完成。是否切换到系统浏览器打开，或者先复制链接？</string>
+    <string name="open_in_browser">用浏览器打开</string>
+    <string name="copy_link">复制链接</string>
+    <string name="link_copied">链接已复制</string>
 
     <string name="confirm">确定</string>
     <string name="cancel">取消</string>
