@@ -91,6 +91,31 @@ object FileTypes {
             .substringAfterLast('.', "")
         return normalise(ext)
     }
+
+    /** MIME type for MediaStore insert and ACTION_VIEW. */
+    fun mimeTypeForFileName(fileName: String): String {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "txt" -> "text/plain"
+            "pdf" -> "application/pdf"
+            "epub" -> "application/epub+zip"
+            "mobi", "azw3" -> "application/x-mobipocket-ebook"
+            "zip" -> "application/zip"
+            "rar" -> "application/vnd.rar"
+            "7z" -> "application/x-7z-compressed"
+            "html", "htm" -> "text/html"
+            "mp4" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "mp3" -> "audio/mpeg"
+            "m4a" -> "audio/mp4"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "" -> "application/octet-stream"
+            else -> android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        }
+    }
 }
 
 /**

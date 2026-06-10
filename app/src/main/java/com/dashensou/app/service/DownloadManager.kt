@@ -18,8 +18,12 @@ import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.util.NetDiskUtils
+import com.dashensou.app.util.MediaStorePaths
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -67,6 +71,9 @@ object DownloadManager {
     private var scope: CoroutineScope? = null
     @Volatile
     private var registered = false
+
+    /** In-flight OkHttp direct downloads keyed by Room record id. */
+    private val directDownloadJobs = ConcurrentHashMap<Long, Job>()
 
     /**
      * Initialise the singleton. Idempotent — safe to call from
@@ -139,7 +146,7 @@ object DownloadManager {
         currentScope.launch {
             val fileName = getFileName(title, url, fileType)
             val subDir = subDirFor(category)
-            val finalPath = "${Environment.DIRECTORY_DOWNLOADS}/$subDir/$fileName"
+            val finalPath = MediaStorePaths.recordPath(subDir, fileName)
 
             Log.i(TAG, "enqueueDirectDownload: title=$title url=$url subDir=$subDir fileName=$fileName")
 
@@ -157,6 +164,7 @@ object DownloadManager {
                     downloadId = 0L
                 )
             )
+            directDownloadJobs[recordId] = coroutineContext[Job]!!
 
             try {
                 val ok = DirectDownloader.download(
@@ -168,16 +176,33 @@ object DownloadManager {
                 Log.i(TAG, "enqueueDirectDownload: result=$ok")
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
+                if (current.status == DownloadStatus.PAUSED) return@launch
                 dao.updateDownloadRecord(
                     current.copy(status = if (ok) DownloadStatus.COMPLETED else DownloadStatus.FAILED)
                 )
+            } catch (e: CancellationException) {
+                val dao = App.database.downloadRecordDao()
+                val current = dao.getDownloadRecordById(recordId)
+                if (current?.status == DownloadStatus.DOWNLOADING) {
+                    dao.updateDownloadRecord(current.copy(status = DownloadStatus.PAUSED))
+                }
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "enqueueDirectDownload: download body failed", e)
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
-                dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
+                if (current.status != DownloadStatus.PAUSED) {
+                    dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
+                }
+            } finally {
+                directDownloadJobs.remove(recordId)
             }
         }
+    }
+
+    /** Cancel an in-process OkHttp direct download (pause / delete). */
+    fun cancelDirectDownload(recordId: Long) {
+        directDownloadJobs[recordId]?.cancel()
     }
 
     private fun subDirFor(category: ResourceCategory): String = when (category) {

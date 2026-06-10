@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
@@ -83,15 +82,15 @@ object FileOpener {
         // slash into parts[1] and made the MediaStore lookup fail with
         // "file does not exist" on every download. Limit to 3 instead.
         if (!filePath.startsWith("/")) {
-            val parts = filePath.split("/", limit = 3)
-            if (parts.size == 3) {
+            val parsed = MediaStorePaths.parseRecordPath(filePath)
+            if (parsed != null) {
+                val (relativePath, displayName) = parsed
                 val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 } else {
                     MediaStore.Files.getContentUri("external")
                 }
-                val relativePath = "${parts[0]}/${parts[1]}/"
-                val uri = findInMediaStore(context, collection, relativePath, parts[2])
+                val uri = findInMediaStore(context, collection, relativePath, displayName)
                 if (uri != null) return uri
                 // Fall through in case the file is actually present on legacy
                 // external storage as a raw file (older Android versions).
@@ -166,7 +165,7 @@ object FileOpener {
         return try {
             val projection = arrayOf(MediaStore.MediaColumns._ID)
             val selection = "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?"
-            val selectionArgs = arrayOf("$relativePath/", displayName)
+            val selectionArgs = arrayOf(relativePath, displayName)
             val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
             context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
                 ?.use { cursor ->
@@ -214,25 +213,7 @@ object FileOpener {
     }
 
     private fun guessMimeType(filePath: String): String {
-        val ext = filePath.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "txt" -> "text/plain"
-            "pdf" -> "application/pdf"
-            "epub" -> "application/epub+zip"
-            "mobi", "azw3" -> "application/x-mobipocket-ebook"
-            "zip" -> "application/zip"
-            "rar" -> "application/vnd.rar"
-            "7z" -> "application/x-7z-compressed"
-            "html", "htm" -> "text/html"
-            "mp4" -> "video/mp4"
-            "mkv" -> "video/x-matroska"
-            "avi" -> "video/x-msvideo"
-            "mp3" -> "audio/mpeg"
-            "m4a" -> "audio/mp4"
-            "jpg", "jpeg" -> "image/jpeg"
-            "png" -> "image/png"
-            "" -> "*/*"
-            else -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
-        }
+        val mime = FileTypes.mimeTypeForFileName(filePath)
+        return if (mime == "application/octet-stream") "*/*" else mime
     }
 }

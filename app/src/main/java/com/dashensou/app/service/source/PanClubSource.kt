@@ -51,7 +51,7 @@ private const val MAX_LIST_CARDS = 50
 // round-trip from this workstation's fibre line; mobile carriers over
 // 4G routinely add another 1-2s of latency to overseas origins. 2500ms
 // is the lowest we can set without false positives on slower networks.
-private const val DETAIL_TIMEOUT_MS = 2500L
+private const val DETAIL_TIMEOUT_MS = 8000L
 // pan.club list page is HTML-rendered and takes 1.5-3s on its own, so
 // we declare a slightly larger per-source budget than the 2.5s default.
 // We no longer fetch detail pages during search — list + parse fit

@@ -18,16 +18,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * Owns the downloads list and the row-level intents (pause / resume /
- * retry / open / delete). The list itself comes from Room as a Flow --
- * DownloadProgressPoller writes into the same table, so the UI here
- * never has to know about the polling lifecycle.
- *
- * P1#7: this used to be the bottom half of MainActivity; pulling it
- * out lets the Activity get out of the way of the row-action handlers.
- */
 class DownloadViewModel(
     application: Application,
     private val downloadManager: DownloadManager
@@ -61,33 +53,26 @@ class DownloadViewModel(
     fun pause(record: DownloadRecord) {
         if (record.downloadId > 0) {
             downloadManager.cancelDownload(record.downloadId)
-        } else {
-            // No system DownloadManager id (direct-URL path) -- flip the
-            // status directly. The in-process coroutine keeps running,
-            // but the UI honestly reflects the user's intent.
             viewModelScope.launch(Dispatchers.IO) {
                 App.database.downloadRecordDao().updateDownloadRecord(
                     record.copy(status = DownloadStatus.PAUSED)
                 )
+            }
+        } else if (record.netDiskType == NetDiskType.DIRECT_URL && record.id > 0) {
+            downloadManager.cancelDirectDownload(record.id)
+            viewModelScope.launch(Dispatchers.IO) {
+                val dao = App.database.downloadRecordDao()
+                val current = dao.getDownloadRecordById(record.id) ?: return@launch
+                if (current.status == DownloadStatus.DOWNLOADING) {
+                    dao.updateDownloadRecord(current.copy(status = DownloadStatus.PAUSED))
+                }
             }
         }
     }
 
     fun resume(record: DownloadRecord) {
         if (record.netDiskType == NetDiskType.DIRECT_URL) {
-            // The paused row was for an OkHttp-backed download; the
-            // easiest correct path is to drop the row and start a fresh
-            // download. Trying to rehydrate OkHttp call state would
-            // require far more plumbing than this affordance is worth.
-            viewModelScope.launch(Dispatchers.IO) {
-                App.database.downloadRecordDao().deleteDownloadRecord(record)
-            }
-            downloadManager.enqueueDirectDownload(
-                title = record.title,
-                url = record.url,
-                category = record.category,
-                fileType = null
-            )
+            restartDirectDownload(record)
         } else {
             retry(record)
         }
@@ -95,19 +80,8 @@ class DownloadViewModel(
 
     fun retry(record: DownloadRecord) {
         if (record.netDiskType == NetDiskType.DIRECT_URL) {
-            viewModelScope.launch(Dispatchers.IO) {
-                App.database.downloadRecordDao().deleteDownloadRecord(record)
-            }
-            downloadManager.enqueueDirectDownload(
-                title = record.title,
-                url = record.url,
-                category = record.category,
-                fileType = null
-            )
+            restartDirectDownload(record)
         } else {
-            // For non-direct records we re-open the installed net-disk
-            // app with the original share URL. The user can re-grab the
-            // file from there.
             val result = SearchResult(
                 title = record.title,
                 url = record.url,
@@ -123,6 +97,8 @@ class DownloadViewModel(
             try {
                 if (record.downloadId > 0) {
                     downloadManager.cancelDownload(record.downloadId)
+                } else if (record.id > 0) {
+                    downloadManager.cancelDirectDownload(record.id)
                 }
                 val uri = FileOpener.resolveUri(getApplication(), record.filePath)
                 if (uri != null) {
@@ -133,6 +109,20 @@ class DownloadViewModel(
                 FileUtils.deleteFile(record.filePath)
             } finally {
                 App.database.downloadRecordDao().deleteDownloadRecord(record)
+            }
+        }
+    }
+
+    private fun restartDirectDownload(record: DownloadRecord) {
+        viewModelScope.launch(Dispatchers.IO) {
+            App.database.downloadRecordDao().deleteDownloadRecord(record)
+            withContext(Dispatchers.Main) {
+                downloadManager.enqueueDirectDownload(
+                    title = record.title,
+                    url = record.url,
+                    category = record.category,
+                    fileType = null
+                )
             }
         }
     }

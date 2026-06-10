@@ -39,7 +39,6 @@ object PansouGotoResolver {
         timeoutMs: Long = 10_000L
     ): String? = withContext(Dispatchers.Main) {
         if (gotoUrl.isBlank()) return@withContext null
-        // Already a direct share link — nothing to resolve.
         if (NET_DISK_DOMAINS.any { gotoUrl.contains(it, ignoreCase = true) }) {
             return@withContext gotoUrl
         }
@@ -56,29 +55,27 @@ object PansouGotoResolver {
             val timeoutRunnable = Runnable {
                 if (finished) return@Runnable
                 finished = true
-                runCatching {
-                    webView.stopLoading()
-                    webView.destroy()
-                }
+                destroyWebView(webView)
                 if (cont.isActive) cont.resume(null)
             }
 
             fun complete(url: String?) {
                 if (finished) return
+                val resolved = url?.takeIf {
+                    NET_DISK_DOMAINS.any { host -> it.contains(host, ignoreCase = true) }
+                }
+                if (resolved == null) return
                 finished = true
                 handler.removeCallbacks(timeoutRunnable)
-                runCatching {
-                    webView.stopLoading()
-                    webView.destroy()
-                }
-                if (cont.isActive) cont.resume(url)
+                destroyWebView(webView)
+                if (cont.isActive) cont.resume(resolved)
             }
 
             handler.postDelayed(timeoutRunnable, timeoutMs)
 
             cont.invokeOnCancellation {
                 handler.removeCallbacks(timeoutRunnable)
-                runCatching { webView.destroy() }
+                destroyWebView(webView)
             }
 
             webView.webViewClient = object : WebViewClient() {
@@ -103,8 +100,23 @@ object PansouGotoResolver {
                     }
                     return false
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    if (!url.isNullOrBlank()) {
+                        complete(url)
+                    }
+                }
             }
             webView.loadUrl(gotoUrl)
+        }
+    }
+
+    private fun destroyWebView(webView: WebView) {
+        runCatching {
+            webView.stopLoading()
+            webView.loadUrl("about:blank")
+            webView.destroy()
         }
     }
 }
