@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -166,32 +167,61 @@ object DownloadManager {
             )
             directDownloadJobs[recordId] = coroutineContext[Job]!!
 
+            val record = App.database.downloadRecordDao().getDownloadRecordById(recordId) ?: return@launch
+            val privateFilePath = ProgressDownloader.getFilePath(ctx, title, fileType ?: "")
+
             try {
-                val ok = DirectDownloader.download(
+                val ok = ProgressDownloader.download(
                     context = ctx,
-                    url = url,
-                    displayName = fileName,
-                    subDir = subDir
-                )
+                    record = record.copy(filePath = privateFilePath)
+                ) { progress ->
+                    kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                        val dao = App.database.downloadRecordDao()
+                        val current = dao.getDownloadRecordById(recordId)
+                        if (current != null && current.status == DownloadStatus.DOWNLOADING) {
+                            dao.updateDownloadRecord(
+                                current.copy(
+                                    downloadSize = progress.downloadedBytes,
+                                    fileSize = if (progress.totalBytes > 0) progress.totalBytes else current.fileSize
+                                )
+                            )
+                        }
+                    }
+                }
+
                 Log.i(TAG, "enqueueDirectDownload: result=$ok")
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
                 if (current.status == DownloadStatus.PAUSED) return@launch
-                dao.updateDownloadRecord(
-                    current.copy(status = if (ok) DownloadStatus.COMPLETED else DownloadStatus.FAILED)
-                )
+
+                if (ok) {
+                    val finalFile = java.io.File(privateFilePath)
+                    dao.updateDownloadRecord(
+                        current.copy(
+                            status = DownloadStatus.COMPLETED,
+                            filePath = privateFilePath,
+                            fileSize = finalFile.length(),
+                            downloadSize = finalFile.length()
+                        )
+                    )
+                } else {
+                    ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
+                    dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
+                }
             } catch (e: CancellationException) {
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId)
                 if (current?.status == DownloadStatus.DOWNLOADING) {
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.PAUSED))
                 }
+                ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "enqueueDirectDownload: download body failed", e)
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
                 if (current.status != DownloadStatus.PAUSED) {
+                    ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
                 }
             } finally {

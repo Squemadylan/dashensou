@@ -25,7 +25,7 @@ import java.io.OutputStream
  */
 object DirectDownloader {
     private const val TAG = "DirectDownloader"
-    private const val DOWNLOAD_TIMEOUT_MS = 60_000L
+    private const val DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000L // 5 minutes for large files
     private const val MAX_BYTES = 512L * 1024 * 1024 // 512 MiB safety cap
 
     suspend fun download(
