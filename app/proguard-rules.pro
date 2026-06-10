@@ -36,10 +36,8 @@
   @com.google.gson.annotations.SerializedName <fields>;
 }
 
-# Keep data classes
--keep class com.example.chatbot.data.model.** { *; }
--keep class com.example.chatbot.data.model.UpdateManifest { *; }
--keep class com.example.chatbot.data.network.** { *; }
+# Keep data models
+-keep class com.dashensou.app.data.model.** { *; }
 
 # Room
 -keep class * extends androidx.room.RoomDatabase

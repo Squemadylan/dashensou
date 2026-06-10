@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="@dimen/list_item_height"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:minHeight="56dp"
-    android:paddingStart="@dimen/padding_medium"
-    android:paddingEnd="@dimen/padding_small"
-    android:paddingTop="@dimen/padding_small"
-    android:paddingBottom="@dimen/padding_small">
+    android:paddingStart="@dimen/space_lg"
+    android:paddingEnd="@dimen/space_sm"
+    android:background="?attr/selectableItemBackground">
 
     <LinearLayout
         android:layout_width="0dp"
@@ -21,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="@dimen/text_size_normal"
-            android:textColor="@color/text_primary"
+            android:textColor="?attr/colorOnSurface"
             android:textStyle="bold"/>
 
         <TextView
@@ -30,19 +29,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:textSize="@dimen/text_size_small"
-            android:textColor="@color/text_secondary"/>
+            android:textColor="?attr/colorOnSurfaceVariant"/>
 
     </LinearLayout>
 
-    <androidx.appcompat.widget.SwitchCompat
+    <com.google.android.material.materialswitch.MaterialSwitch
         android:id="@+id/source_switch"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:clickable="true"
-        android:focusable="true"
-        android:textOn=""
-        android:textOff=""
-        android:thumbTint="@color/primary"
-        android:trackTint="@color/bg_card"/>
+        android:focusable="true"/>
 
 </LinearLayout>

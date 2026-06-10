@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    M3 pill-style tag used by search-result cards to render the
+    net-disk type ("Baidu", "Quark", etc). Background and stroke
+    follow the secondary container so the tag sits comfortably on
+    the surface card in both light and dark modes.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/primary"/>
-    <corners android:radius="6dp"/>
+    <solid android:color="?attr/colorSecondaryContainer" />
+    <corners android:radius="6dp" />
     <stroke
         android:width="1dp"
-        android:color="@color/neon_cyan"/>
+        android:color="?attr/colorOutlineVariant" />
 </shape>

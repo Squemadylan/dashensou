@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.dashensou.app.R
 import com.dashensou.app.data.model.NetDiskType
+import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.databinding.ActivityWebviewBinding
 import com.dashensou.app.service.DownloadManager
 import com.dashensou.app.util.DiskLabels
@@ -164,6 +165,17 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 return false
             }
+
+            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (url.isNullOrBlank()) return false
+                Log.i(TAG, "shouldOverride(legacy): $url")
+                if (isNetDiskUrl(url)) {
+                    launchNetDiskApp(url)
+                    return true
+                }
+                return false
+            }
         }
         binding.webview.loadUrl(gotoUrl)
     }
@@ -205,26 +217,17 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun launchNetDiskApp(url: String) {
         val finalUrl = NetDiskUtils.appendExtractionCode(url, netDiskType, password)
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+        val result = SearchResult(
+            url = finalUrl,
+            netDiskType = netDiskType,
+            extractionCode = password
+        )
+        val opened = DownloadManager.openNetDiskApp(result)
+        if (opened) {
             Toast.makeText(this, getString(R.string.netdisk_opened), Toast.LENGTH_SHORT).show()
             finish()
-        } catch (e: Exception) {
-            Log.w(TAG, "no app handles $url, falling back to chooser", e)
-            try {
-                val chooser = Intent.createChooser(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)),
-                    getString(R.string.choose_netdisk_app)
-                )
-                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(chooser)
-                finish()
-            } catch (e2: Exception) {
-                Log.e(TAG, "no app at all", e2)
-                Toast.makeText(this, getString(R.string.netdisk_not_installed), Toast.LENGTH_LONG).show()
-            }
+        } else {
+            Toast.makeText(this, getString(R.string.netdisk_not_installed), Toast.LENGTH_LONG).show()
         }
     }
 

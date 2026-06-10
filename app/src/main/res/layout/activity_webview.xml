@@ -4,102 +4,82 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="?android:attr/colorBackground"
     android:orientation="vertical">
 
-    <!-- P1#12: replace the hand-rolled Toolbar + gray strip with a
-         MaterialToolbar that follows the app's primary-color identity
-         and houses the close button as a menu action. -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/bg_card"
-        app:titleTextColor="@color/text_primary"
+        android:background="?attr/colorSurface"
+        app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
+        app:titleTextColor="?attr/colorOnSurface"
         app:navigationIcon="@android:drawable/ic_menu_close_clear_cancel"
-        app:navigationIconTint="@color/text_primary"
+        app:navigationIconTint="?attr/colorOnSurface"
         app:title="@string/webview_title" />
 
-    <!-- Chips row replaces the two plain TextViews. The chips convey
-         the same info but with a uniform shape that matches the rest
-         of the app's neon styling (P1#12). -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="@dimen/padding_medium"
-        android:background="@color/bg_card">
+        android:paddingHorizontal="@dimen/space_lg"
+        android:paddingVertical="@dimen/space_md"
+        android:background="?attr/colorSurface">
 
         <com.google.android.material.chip.Chip
             android:id="@+id/chip_netdisk_type"
-            style="@style/Widget.MaterialComponents.Chip.Action"
+            style="@style/Widget.DaShenSou.Chip.Assist"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            app:chipBackgroundColor="@color/primary"
-            app:chipStrokeColor="@color/primary_light"
-            app:chipStrokeWidth="1dp"
-            tools:text="百度网盘" />
+            app:chipMinHeight="32dp"
+            tools:text="Net-disk type" />
 
         <com.google.android.material.chip.Chip
             android:id="@+id/chip_password"
-            style="@style/Widget.MaterialComponents.Chip.Action"
+            style="@style/Widget.DaShenSou.Chip.Assist"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/margin_small"
-            android:textColor="@color/text_primary"
-            app:chipBackgroundColor="@color/accent"
-            app:chipStrokeColor="@color/accent"
-            app:chipStrokeWidth="1dp"
-            tools:text="提取码: 3uvk" />
+            android:layout_marginStart="@dimen/space_sm"
+            app:chipMinHeight="32dp"
+            tools:text="Password" />
 
     </LinearLayout>
 
-    <!-- Action row: copy password / open net-disk app. Pulled out of
-         the gray header so it doesn't compete with the chips for the
-         user's attention. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="@dimen/padding_medium"
-        android:background="@color/bg_card">
+        android:padding="@dimen/space_lg"
+        android:background="?attr/colorSurface">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_copy_password"
-            style="@style/NeonButton"
+            style="@style/Widget.DaShenSou.Button.Tonal"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/copy_password"
-            android:background="@drawable/bg_neon_button"
-            app:cornerRadius="@dimen/corner_radius_large" />
+            app:icon="@drawable/ic_folder"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_open_app"
-            style="@style/NeonButton"
+            style="@style/Widget.DaShenSou.Button.Tonal"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="@dimen/margin_small"
+            android:layout_marginStart="@dimen/space_sm"
             android:text="@string/open_netdisk_app"
-            android:background="@drawable/bg_neon_button"
-            app:cornerRadius="@dimen/corner_radius_large" />
+            app:icon="@drawable/ic_nav_download"/>
 
     </LinearLayout>
 
-    <!-- P1#12: instead of a full-bleed WebView that takes over the
-         screen, give it a 200dp preview window inside a NestedScrollView.
-         The actual landing page is still clickable; if the user wants
-         more height they can scroll, but the chip + button bar stays
-         visible so the "open in app" CTA is never out of reach. -->
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true"
-        android:background="@color/bg_dark">
+        android:background="?android:attr/colorBackground">
 
         <WebView
             android:id="@+id/webview"

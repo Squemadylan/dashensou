@@ -1,20 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/Widget.DaShenSou.Card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardCornerRadius="@dimen/corner_radius_large"
-    app:cardElevation="@dimen/elevation_small"
-    app:cardBackgroundColor="@color/bg_card"
-    app:strokeColor="@color/divider"
-    app:strokeWidth="1dp"
-    android:layout_marginBottom="@dimen/margin_medium">
+    android:layout_marginBottom="@dimen/space_md">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="@dimen/padding_medium">
+        android:padding="@dimen/space_lg">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -33,7 +30,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textSize="@dimen/text_size_large"
-                    android:textColor="@color/text_primary"
+                    android:textColor="?attr/colorOnSurface"
                     android:textStyle="bold"
                     android:maxLines="1"
                     android:ellipsize="end"/>
@@ -42,7 +39,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginTop="@dimen/margin_small"
+                    android:layout_marginTop="@dimen/space_sm"
                     android:gravity="center_vertical">
 
                     <TextView
@@ -50,23 +47,23 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textSize="@dimen/text_size_small"
-                        android:textColor="@color/accent"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"/>
 
                     <TextView
                         android:id="@+id/download_size"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textSize="@dimen/text_size_small"
-                        android:textColor="@color/text_hint"
-                        android:layout_marginStart="@dimen/margin_small"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginStart="@dimen/space_sm"/>
 
                     <TextView
                         android:id="@+id/download_time"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textSize="@dimen/text_size_small"
-                        android:textColor="@color/text_hint"
-                        android:layout_marginStart="@dimen/margin_small"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginStart="@dimen/space_sm"/>
 
                 </LinearLayout>
 
@@ -74,11 +71,11 @@
                     android:id="@+id/download_progress"
                     style="?android:attr/progressBarStyleHorizontal"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/progress_height"
-                    android:layout_marginTop="@dimen/margin_small"
+                    android:layout_height="6dp"
+                    android:layout_marginTop="@dimen/space_sm"
                     android:max="100"
                     android:progress="0"
-                    android:progressDrawable="@drawable/progress_gradient"
+                    android:progressDrawable="@drawable/progress_horizontal"
                     android:indeterminate="false"/>
 
                 <TextView
@@ -86,8 +83,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textSize="@dimen/text_size_small"
-                    android:textColor="@color/text_hint"
-                    android:layout_marginTop="4dp"/>
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginTop="@dimen/space_xs"/>
 
             </LinearLayout>
 
@@ -95,24 +92,24 @@
                 android:id="@+id/download_folder_btn"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="@dimen/margin_small"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="打开下载文件夹"
+                android:layout_marginStart="@dimen/space_sm"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/open_with"
                 android:src="@drawable/ic_folder"
-                app:tint="@color/text_secondary" />
+                app:tint="?attr/colorOnSurfaceVariant" />
 
             <ImageButton
                 android:id="@+id/download_action_btn"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="@dimen/margin_small"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Action"
-                android:src="@android:drawable/ic_menu_close_clear_cancel"
-                app:tint="@color/accent" />
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="@dimen/space_xs"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/retry"
+                android:src="@android:drawable/ic_media_pause"
+                app:tint="?attr/colorPrimary" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

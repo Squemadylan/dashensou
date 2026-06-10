@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#A6C8FF</color>
+    <color name="colorOnPrimary">#003065</color>
+    <color name="colorPrimaryContainer">#00468F</color>
+    <color name="colorOnPrimaryContainer">#D9E4FF</color>
+    <color name="colorSecondary">#BFC4DC</color>
+    <color name="colorOnSecondary">#292E40</color>
+    <color name="colorSecondaryContainer">#3F4458</color>
+    <color name="colorOnSecondaryContainer">#DFE2F2</color>
+    <color name="colorTertiary">#EFB8C5</color>
+    <color name="colorOnTertiary">#4A2530</color>
+    <color name="colorSurface">#11131A</color>
+    <color name="colorOnSurface">#E3E2E9</color>
+    <color name="colorSurfaceVariant">#44464F</color>
+    <color name="colorOnSurfaceVariant">#C5C6D0</color>
+    <color name="colorSurfaceContainer">#1A1B22</color>
+    <color name="colorSurfaceContainerHigh">#22242C</color>
+    <color name="colorSurfaceContainerHighest">#2D2F37</color>
+    <color name="colorSurfaceContainerLow">#15171E</color>
+    <color name="colorSurfaceContainerLowest">#0B0D13</color>
+    <color name="colorSurfaceDim">#11131A</color>
+    <color name="colorSurfaceBright">#373942</color>
+    <color name="colorOutline">#8E9099</color>
+    <color name="colorOutlineVariant">#44464F</color>
+    <color name="status_success">#81C784</color>
+    <color name="status_error">#EF9A9A</color>
+    <color name="status_pending">#FFB74D</color>
+</resources>

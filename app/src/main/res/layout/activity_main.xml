@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg_dark">
+    android:background="?android:attr/colorBackground">
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -22,8 +22,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="@dimen/padding_large"
-                android:background="@drawable/bg_search_bar">
+                android:paddingHorizontal="@dimen/space_lg"
+                android:paddingTop="@dimen/space_xl"
+                android:paddingBottom="@dimen/space_md"
+                android:background="@color/colorSurfaceContainer">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -35,71 +37,97 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="⚡ 大神搜"
-                        android:textSize="@dimen/text_size_title"
-                        android:textColor="@color/text_primary"
+                        android:text="@string/app_name"
+                        android:textSize="@dimen/text_size_xlarge"
                         android:textStyle="bold"
-                        android:fontFamily="sans-serif-black"/>
+                        android:textColor="?attr/colorOnSurface"
+                        android:fontFamily="sans-serif-medium"/>
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
                         android:src="@drawable/ic_lightning_crown"
-                        android:contentDescription="Logo"/>
+                        android:contentDescription="@string/app_name"
+                        app:tint="?attr/colorPrimary"/>
 
                 </LinearLayout>
 
+                <!--
+                    M3 OutlinedBox search field. OutlinedBox (vs FilledBox)
+                    is the most common M3 search field pattern and gives
+                    the floating hint reliable vertical room: when the
+                    field is empty the hint sits in the center of the
+                    outline; when focused or filled the hint floats up
+                    to the top edge of the outline in a smaller font.
+                    No padding on the inner EditText — the style already
+                    provides correct vertical metrics.
+                -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/search_layout"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/margin_medium"
-                    android:hint="搜索你想要的..."
-                    android:background="@drawable/bg_search_bar"
-                    app:boxBackgroundMode="none">
+                    android:layout_marginTop="@dimen/space_md"
+                    android:hint="@string/search_input_hint"
+                    app:boxStrokeColor="@color/text_input_outline"
+                    app:hintAnimationEnabled="true"
+                    app:hintEnabled="true"
+                    app:hintTextColor="?attr/colorOnSurfaceVariant"
+                    app:startIconDrawable="@drawable/ic_search"
+                    app:startIconTint="?attr/colorOnSurfaceVariant"
+                    app:endIconMode="clear_text"
+                    app:endIconTint="?attr/colorOnSurfaceVariant"
+                    app:boxCornerRadiusTopStart="@dimen/shape_lg"
+                    app:boxCornerRadiusTopEnd="@dimen/shape_lg"
+                    app:boxCornerRadiusBottomStart="@dimen/shape_lg"
+                    app:boxCornerRadiusBottomEnd="@dimen/shape_lg">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/search_input"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:padding="@dimen/padding_medium"
                         android:textSize="@dimen/text_size_normal"
-                        android:textColor="@color/text_primary"
-                        android:textColorHint="@color/text_hint"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textColorHint="?attr/colorOnSurfaceVariant"
                         android:imeOptions="actionSearch"
-                        android:inputType="text"/>
+                        android:inputType="text"
+                        android:singleLine="true"/>
 
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.tabs.TabLayout
                     android:id="@+id/category_tabs"
-                    style="@style/CategoryTabStyle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/margin_medium"
-                    android:background="@color/bg_card"
+                    android:layout_marginTop="@dimen/space_md"
+                    android:background="@android:color/transparent"
                     app:tabMode="scrollable"
                     app:tabGravity="fill"
-                    app:tabBackground="@drawable/bg_category_tab"
-                    app:tabPaddingStart="@dimen/padding_medium"
-                    app:tabPaddingEnd="@dimen/padding_medium"
-                    app:tabPaddingTop="@dimen/padding_small"
-                    app:tabPaddingBottom="@dimen/padding_small">
+                    app:tabIndicatorColor="?attr/colorPrimary"
+                    app:tabIndicatorHeight="3dp"
+                    app:tabSelectedTextColor="?attr/colorPrimary"
+                    app:tabTextColor="?attr/colorOnSurfaceVariant"
+                    app:tabRippleColor="?attr/colorPrimaryContainer"
+                    app:tabPaddingStart="@dimen/space_md"
+                    app:tabPaddingEnd="@dimen/space_md"
+                    app:tabPaddingTop="@dimen/space_sm"
+                    app:tabPaddingBottom="@dimen/space_sm"
+                    app:tabTextAppearance="@style/TextAppearance.Material3.LabelLarge">
 
                     <com.google.android.material.tabs.TabItem
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="全部"/>
+                        android:text="@string/category_tab_all"/>
 
                     <com.google.android.material.tabs.TabItem
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="电子书"/>
+                        android:text="@string/category_tab_ebook"/>
 
                     <com.google.android.material.tabs.TabItem
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="网盘"/>
+                        android:text="@string/category_tab_pandisk"/>
 
                 </com.google.android.material.tabs.TabLayout>
 
@@ -108,7 +136,8 @@
             <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
                 android:id="@+id/refresh_layout"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent">
+                android:layout_height="match_parent"
+                android:background="?android:attr/colorBackground">
 
                 <FrameLayout
                     android:layout_width="match_parent"
@@ -118,17 +147,18 @@
                         android:id="@+id/search_results"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:padding="@dimen/padding_medium"/>
+                        android:padding="@dimen/space_md"
+                        android:clipToPadding="false"/>
 
                     <TextView
                         android:id="@+id/search_empty"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:gravity="center"
-                        android:padding="@dimen/padding_large"
-                        android:text="请输入关键词开始搜索"
-                        android:textSize="@dimen/text_size_medium"
-                        android:textColor="@color/text_hint"
+                        android:padding="@dimen/space_xl"
+                        android:text="@string/search_hint"
+                        android:textSize="@dimen/text_size_normal"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:visibility="gone"/>
 
                 </FrameLayout>
@@ -147,210 +177,300 @@
             <ScrollView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:fillViewport="true">
+                android:fillViewport="true"
+                android:scrollbarStyle="outsideOverlay">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="@dimen/padding_large">
+                    android:padding="@dimen/space_lg">
 
-                    <!-- Header -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/space_md"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:padding="@dimen/padding_medium"
-                        android:background="@drawable/bg_search_bar"
-                        android:layout_marginBottom="@dimen/margin_large">
+                        android:paddingHorizontal="@dimen/space_sm">
 
                         <ImageView
-                            android:layout_width="56dp"
-                            android:layout_height="56dp"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
                             android:src="@drawable/ic_lightning_crown"
-                            android:contentDescription="@string/app_name"/>
+                            android:contentDescription="@string/app_name"
+                            app:tint="?attr/colorPrimary"/>
 
-                        <LinearLayout
+                        <TextView
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:layout_marginStart="@dimen/margin_medium"
-                            android:orientation="vertical">
+                            android:layout_marginStart="@dimen/space_sm"
+                            android:text="@string/app_name"
+                            android:textSize="@dimen/text_size_large"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textStyle="bold"/>
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/app_name"
-                                android:textSize="@dimen/text_size_title"
-                                android:textColor="@color/text_primary"
-                                android:textStyle="bold"/>
-
-                            <TextView
-                                android:id="@+id/mine_version"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:textSize="@dimen/text_size_small"
-                                android:textColor="@color/text_secondary"/>
-
-                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/mine_version"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="@dimen/text_size_small"
+                            android:textColor="?attr/colorOnSurfaceVariant"/>
 
                     </LinearLayout>
 
-                    <!-- Feedback section -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="反馈与社区"
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:layout_marginBottom="@dimen/space_sm"
+                        android:text="@string/theme_mode_title"
                         android:textSize="@dimen/text_size_medium"
-                        android:textColor="@color/text_secondary"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="@dimen/margin_small"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textStyle="bold"/>
 
-                    <LinearLayout
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/mine_theme_card"
+                        style="@style/Widget.DaShenSou.Card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="@dimen/space_xl">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="@dimen/space_lg">
+
+                            <com.google.android.material.button.MaterialButtonToggleGroup
+                                android:id="@+id/mine_theme_group"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                app:singleSelection="true"
+                                app:selectionRequired="true">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/mine_theme_system"
+                                    style="?attr/materialButtonOutlinedStyle"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="@string/theme_follow_system"
+                                    android:textSize="@dimen/text_size_small"/>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/mine_theme_light"
+                                    style="?attr/materialButtonOutlinedStyle"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="@string/theme_light"
+                                    android:textSize="@dimen/text_size_small"/>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/mine_theme_dark"
+                                    style="?attr/materialButtonOutlinedStyle"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="@string/theme_dark"
+                                    android:textSize="@dimen/text_size_small"/>
+
+                            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                        </LinearLayout>
+
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:layout_marginBottom="@dimen/space_sm"
+                        android:text="@string/mine_feedback_section"
+                        android:textSize="@dimen/text_size_medium"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textStyle="bold"/>
+
+                    <com.google.android.material.card.MaterialCardView
                         android:id="@+id/mine_qq_group"
+                        style="@style/Widget.DaShenSou.Card"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="@dimen/padding_medium"
-                        android:background="@drawable/bg_search_bar"
-                        android:layout_marginBottom="@dimen/margin_small"
+                        android:layout_marginBottom="@dimen/space_sm"
                         android:clickable="true"
-                        android:focusable="true"
-                        android:foreground="?android:attr/selectableItemBackground">
-
-                        <TextView
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:gravity="center"
-                            android:text="💬"
-                            android:textSize="22sp"
-                            android:background="@color/bg_card"/>
+                        android:focusable="true">
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="@dimen/margin_medium"
-                            android:orientation="vertical">
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:padding="@dimen/space_lg">
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="加入 QQ 群"
-                                android:textSize="@dimen/text_size_normal"
-                                android:textColor="@color/text_primary"
-                                android:textStyle="bold"/>
+                            <ImageView
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:src="@drawable/ic_nav_mine"
+                                android:contentDescription="@string/mine_join_qq_title"
+                                app:tint="?attr/colorPrimary"/>
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                            <LinearLayout
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="群号：182225274（点击跳转加群）"
-                                android:textSize="@dimen/text_size_small"
-                                android:textColor="@color/text_secondary"/>
+                                android:layout_weight="1"
+                                android:layout_marginStart="@dimen/space_lg"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/mine_join_qq_title"
+                                    android:textSize="@dimen/text_size_normal"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textStyle="bold"/>
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="@string/mine_join_qq_subtitle"
+                                    android:textSize="@dimen/text_size_small"
+                                    android:textColor="?attr/colorOnSurfaceVariant"/>
+
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@drawable/ic_arrow_forward"
+                                android:contentDescription="@null"
+                                app:tint="?attr/colorOnSurfaceVariant"/>
 
                         </LinearLayout>
 
-                    </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
 
-                    <LinearLayout
+                    <com.google.android.material.card.MaterialCardView
                         android:id="@+id/mine_copy_qq"
+                        style="@style/Widget.DaShenSou.Card"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="@dimen/padding_medium"
-                        android:background="@drawable/bg_search_bar"
-                        android:layout_marginBottom="@dimen/margin_large"
+                        android:layout_marginBottom="@dimen/space_xl"
                         android:clickable="true"
-                        android:focusable="true"
-                        android:foreground="?android:attr/selectableItemBackground">
-
-                        <TextView
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:gravity="center"
-                            android:text="📋"
-                            android:textSize="22sp"
-                            android:background="@color/bg_card"/>
+                        android:focusable="true">
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="@dimen/margin_medium"
-                            android:orientation="vertical">
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:padding="@dimen/space_lg">
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="复制 QQ 群号"
-                                android:textSize="@dimen/text_size_normal"
-                                android:textColor="@color/text_primary"
-                                android:textStyle="bold"/>
+                            <ImageView
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:src="@drawable/ic_folder"
+                                android:contentDescription="@string/mine_copy_qq_title"
+                                app:tint="?attr/colorPrimary"/>
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                            <LinearLayout
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="不方便跳转时，可手动复制后搜索"
-                                android:textSize="@dimen/text_size_small"
-                                android:textColor="@color/text_secondary"/>
+                                android:layout_weight="1"
+                                android:layout_marginStart="@dimen/space_lg"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/mine_copy_qq_title"
+                                    android:textSize="@dimen/text_size_normal"
+                                    android:textColor="?attr/colorOnSurface"
+                                    android:textStyle="bold"/>
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="@string/mine_copy_qq_subtitle"
+                                    android:textSize="@dimen/text_size_small"
+                                    android:textColor="?attr/colorOnSurfaceVariant"/>
+
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:src="@drawable/ic_arrow_forward"
+                                android:contentDescription="@null"
+                                app:tint="?attr/colorOnSurfaceVariant"/>
 
                         </LinearLayout>
 
-                    </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
 
-                    <!-- Sources section -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="搜索数据源"
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:layout_marginBottom="@dimen/space_sm"
+                        android:text="@string/mine_sources_title"
                         android:textSize="@dimen/text_size_medium"
-                        android:textColor="@color/text_secondary"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="@dimen/margin_small"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textStyle="bold"/>
 
-                    <LinearLayout
-                        android:id="@+id/mine_sources_container"
+                    <com.google.android.material.card.MaterialCardView
+                        style="@style/Widget.DaShenSou.Card"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="@dimen/padding_medium"
-                        android:background="@drawable/bg_search_bar"
-                        android:layout_marginBottom="@dimen/margin_small"/>
+                        android:layout_marginBottom="@dimen/space_sm">
+
+                        <LinearLayout
+                            android:id="@+id/mine_sources_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="@dimen/space_sm"/>
+
+                    </com.google.android.material.card.MaterialCardView>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/padding_small"
-                        android:layout_marginBottom="@dimen/margin_large"
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:layout_marginBottom="@dimen/space_xl"
                         android:text="@string/source_toggle_hint"
                         android:textSize="@dimen/text_size_small"
-                        android:textColor="@color/text_hint"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"/>
 
-                    <!-- About section -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="关于"
+                        android:layout_marginStart="@dimen/space_xs"
+                        android:layout_marginBottom="@dimen/space_sm"
+                        android:text="@string/mine_about_title"
                         android:textSize="@dimen/text_size_medium"
-                        android:textColor="@color/text_secondary"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="@dimen/margin_small"/>
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textStyle="bold"/>
 
-                    <TextView
+                    <com.google.android.material.card.MaterialCardView
+                        style="@style/Widget.DaShenSou.Card"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:padding="@dimen/padding_medium"
-                        android:background="@drawable/bg_search_bar"
-                        android:text="@string/mine_about"
-                        android:textSize="@dimen/text_size_small"
-                        android:textColor="@color/text_secondary"
-                        android:lineSpacingExtra="3dp"/>
+                        android:layout_marginBottom="@dimen/space_xl">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="@dimen/space_lg"
+                            android:text="@string/mine_about"
+                            android:textSize="@dimen/text_size_small"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:lineSpacingExtra="3dp"/>
+
+                    </com.google.android.material.card.MaterialCardView>
 
                 </LinearLayout>
 
@@ -363,32 +483,43 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:visibility="gone"
-            android:padding="@dimen/padding_medium">
+            android:visibility="gone">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="⬇️ 下载列表"
+                android:paddingHorizontal="@dimen/space_lg"
+                android:paddingTop="@dimen/space_xl"
+                android:paddingBottom="@dimen/space_md"
+                android:text="@string/download_page_title"
                 android:textSize="@dimen/text_size_xlarge"
-                android:textColor="@color/text_primary"
+                android:textColor="?attr/colorOnSurface"
                 android:textStyle="bold"
-                android:layout_marginBottom="@dimen/margin_medium"/>
+                android:background="@color/colorSurfaceContainer"/>
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/download_results"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
+                android:layout_height="match_parent">
 
-            <TextView
-                android:id="@+id/download_empty"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="暂无下载记录"
-                android:textSize="@dimen/text_size_medium"
-                android:textColor="@color/text_hint"
-                android:visibility="gone"/>
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/download_results"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:padding="@dimen/space_md"
+                    android:clipToPadding="false"/>
+
+                <TextView
+                    android:id="@+id/download_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:padding="@dimen/space_xl"
+                    android:text="@string/download_empty"
+                    android:textSize="@dimen/text_size_normal"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone"/>
+
+            </FrameLayout>
 
         </LinearLayout>
 
@@ -398,9 +529,11 @@
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/bg_card"
+        android:background="?attr/colorSurfaceContainer"
         app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@color/text_secondary"
-        app:itemTextColor="@color/text_secondary"/>
+        app:itemIconTint="@color/bottom_nav_item_color"
+        app:itemTextColor="@color/bottom_nav_item_color"
+        app:itemActiveIndicatorStyle="@style/Widget.Material3.BottomNavigationView.ActiveIndicator"
+        app:labelVisibilityMode="labeled"/>
 
 </LinearLayout>

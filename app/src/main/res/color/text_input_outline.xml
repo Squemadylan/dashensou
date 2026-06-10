@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Color state list for the M3 OutlinedBox search field border.
+    Unfocused:  muted outline (colorOutlineVariant)
+    Focused:    primary color so the floating hint and the active
+                border share the same color and the field reads as
+                "engaged" the moment the user taps it.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorPrimary" android:state_focused="true" />
+    <item android:color="?attr/colorOutline" android:state_hovered="true" />
+    <item android:color="?attr/colorOutlineVariant" />
+</selector>

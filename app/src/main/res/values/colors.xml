@@ -1,29 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#7F5DFE</color>
-    <color name="primary_dark">#5B21B6</color>
-    <color name="primary_light">#A78BFA</color>
-    <color name="accent">#FFE066</color>
-    <color name="accent_secondary">#06B6D4</color>
-    <color name="neon_magenta">#EC4899</color>
-    <color name="neon_cyan">#22D3EE</color>
-    <color name="bg_dark">#0F0F23</color>
-    <color name="bg_card">#1A1A3C</color>
-    <color name="bg_card_hover">#22224D</color>
-    <color name="glass">#33FFFFFF</color>
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#B8B8D1</color>
-    <color name="text_hint">#8080A8</color>
-    <color name="divider">#333355</color>
-    <color name="status_success">#22C55E</color>
-    <color name="status_error">#EF4444</color>
-    <color name="status_pending">#F59E0B</color>
-    
-    <!-- 兼容旧版颜色 -->
-    <color name="colorPrimary">@color/primary</color>
-    <color name="colorPrimaryDark">@color/primary_dark</color>
-    <color name="colorAccent">@color/accent</color>
-    <color name="colorBackground">@color/bg_dark</color>
-    <color name="colorOnBackground">@color/text_primary</color>
-    <color name="colorGray">#444466</color>
+    <!-- Material 3 color tokens (light mode baseline). Dark mode
+         overrides live in res/values-night/colors.xml. Status colors
+         (success/error/pending) are also defined in both modes. -->
+    <color name="colorPrimary">#1A6CF1</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorPrimaryContainer">#D9E4FF</color>
+    <color name="colorOnPrimaryContainer">#001A41</color>
+    <color name="colorSecondary">#5B5F6F</color>
+    <color name="colorOnSecondary">#FFFFFF</color>
+    <color name="colorSecondaryContainer">#DFE2F2</color>
+    <color name="colorOnSecondaryContainer">#171B2C</color>
+    <color name="colorTertiary">#7D5260</color>
+    <color name="colorOnTertiary">#FFFFFF</color>
+    <color name="colorSurface">#FBFCFF</color>
+    <color name="colorOnSurface">#1A1B21</color>
+    <color name="colorSurfaceVariant">#E1E2EC</color>
+    <color name="colorOnSurfaceVariant">#44464F</color>
+    <color name="colorSurfaceContainer">#F2F3F8</color>
+    <color name="colorSurfaceContainerHigh">#ECEDF3</color>
+    <color name="colorSurfaceContainerHighest">#E6E7EE</color>
+    <color name="colorSurfaceContainerLow">#F8F9FD</color>
+    <color name="colorSurfaceContainerLowest">#FFFFFF</color>
+    <color name="colorSurfaceDim">#DAD9E0</color>
+    <color name="colorSurfaceBright">#FBFCFF</color>
+    <color name="colorOutline">#74777F</color>
+    <color name="colorOutlineVariant">#C4C6D0</color>
+    <color name="status_success">#2E7D32</color>
+    <color name="status_error">#C62828</color>
+    <color name="status_pending">#ED6C02</color>
+    <color name="text_primary">@color/colorOnSurface</color>
+    <color name="text_secondary">@color/colorOnSurfaceVariant</color>
+    <color name="text_hint">@color/colorOnSurfaceVariant</color>
+    <color name="colorBackground">@color/colorSurface</color>
+    <color name="colorOnBackground">@color/colorOnSurface</color>
+    <color name="colorAccent">@color/colorPrimary</color>
+    <color name="colorPrimaryDark">@color/colorPrimary</color>
+    <color name="colorGray">#74777F</color>
+    <color name="scrim">#52000000</color>
 </resources>

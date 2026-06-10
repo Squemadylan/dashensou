@@ -23,4 +23,17 @@
     <dimen name="button_height">48dp</dimen>
     <dimen name="card_stroke_width">2dp</dimen>
     <dimen name="progress_height">8dp</dimen>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_sm">8dp</dimen>
+    <dimen name="space_md">12dp</dimen>
+    <dimen name="space_lg">16dp</dimen>
+    <dimen name="space_xl">24dp</dimen>
+    <dimen name="space_2xl">32dp</dimen>
+    <dimen name="shape_xs">4dp</dimen>
+    <dimen name="shape_sm">8dp</dimen>
+    <dimen name="shape_md">12dp</dimen>
+    <dimen name="shape_lg">16dp</dimen>
+    <dimen name="shape_xl">28dp</dimen>
+    <dimen name="list_item_height">64dp</dimen>
+    <dimen name="m3_search_bar_height">56dp</dimen>
 </resources>
