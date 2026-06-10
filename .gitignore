@@ -11,3 +11,11 @@ __pycache__/
 *.pyc
 .next/
 coverage/
+
+# Android
+.gradle/
+local.properties
+*.iml
+/captures/
+.externalNativeBuild/
+.cxx/
