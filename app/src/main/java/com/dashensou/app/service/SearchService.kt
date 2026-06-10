@@ -220,6 +220,7 @@ class SearchService(
                 val hint = kindHint(pickedKind, failures.size, failures)
                 SearchOutcome.Failure(hint, pickedKind)
             }
+            activeSources.isNotEmpty() -> SearchOutcome.Failure.empty("未找到匹配的资源")
             else -> SearchOutcome.Success(emptyList())
         }
     }

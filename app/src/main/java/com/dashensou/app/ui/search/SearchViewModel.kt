@@ -17,12 +17,6 @@ import kotlinx.coroutines.launch
 
 /**
  * Owns the search-input state and the latest in-flight search result.
- *
- * P1#7: the previous version of this logic lived inline in MainActivity
- * alongside 400+ lines of tab switching, dialogs and adapter wiring, so
- * any change to the search flow required touching the whole Activity.
- * This ViewModel just exposes a [SearchUiState] StateFlow and a few
- * intent-shaped methods; the Activity subscribes and renders.
  */
 class SearchViewModel(
     val searchService: SearchService = SearchService()
@@ -31,31 +25,23 @@ class SearchViewModel(
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    // P0#robustness: keep a reference to the latest search coroutine so a
-    // rapid re-keyword tap can cancel the in-flight request. Without this
-    // an in-flight source that finishes AFTER the user has typed a new
-    // keyword would race-override the newer results.
     private var inFlight: Job? = null
+    private var searchGeneration = 0
 
     fun setKeyword(keyword: String) {
         _state.update { it.copy(keyword = keyword) }
     }
 
     fun setCategory(category: ResourceCategory) {
-        // P1#10: switching the category on the front-end filter never
-        // triggers a network call. The results list is re-filtered in
-        // place; the network fires only when the user actually edits the
-        // keyword or pull-to-refreshes.
         _state.update { it.copy(category = category) }
     }
 
-    fun refresh() = search(keyword = _state.value.keyword, page = 1)
+    fun refresh() = search(
+        keyword = _state.value.keyword,
+        page = 1,
+        category = _state.value.category
+    )
 
-    /**
-     * Reset back to the empty / recommendation state (no keyword, no
-     * results). Called when the user clears the search input and the
-     * "loading recommendations" placeholder is shown.
-     */
     fun clear() {
         inFlight?.cancel()
         inFlight = null
@@ -64,24 +50,28 @@ class SearchViewModel(
         }
     }
 
-    fun search(keyword: String, page: Int = 1) {
+    fun search(
+        keyword: String,
+        page: Int = 1,
+        category: ResourceCategory = _state.value.category
+    ) {
         if (keyword.isBlank()) {
             clear()
             return
         }
-        // Cancel any previous search coroutine so the user can never see a
-        // late-arriving older result overwrite a newer one. The previous
-        // job's HTTP requests are best-effort cancelled; the OkHttp call
-        // may still complete on the IO dispatcher but its result is
-        // discarded by the cancellation check below.
         inFlight?.cancel()
-        _state.update { it.copy(keyword = keyword, page = page, loading = true, failure = null) }
+        val generation = ++searchGeneration
+        _state.update {
+            it.copy(keyword = keyword, page = page, category = category, loading = true, failure = null)
+        }
         inFlight = viewModelScope.launch {
             try {
-                val outcome = searchService.search(keyword, page, _state.value.category)
+                val outcome = searchService.search(keyword, page, category)
+                if (generation != searchGeneration) return@launch
                 when (outcome) {
                     is SearchOutcome.Success -> {
                         _state.update {
+                            if (generation != searchGeneration) return@update it
                             it.copy(
                                 loading = false,
                                 results = outcome.results,
@@ -90,19 +80,16 @@ class SearchViewModel(
                         }
                     }
                     is SearchOutcome.Failure -> {
-                        // Keep the prior results visible so the user can
-                        // still see the last successful list while the
-                        // dialog explains what went wrong.
                         _state.update {
+                            if (generation != searchGeneration) return@update it
                             it.copy(loading = false, failure = outcome)
                         }
                     }
                 }
             } catch (e: CancellationException) {
-                // Cancelled by a newer search or viewModelScope. Don't
-                // touch the state — the next launch will overwrite it.
                 throw e
             } catch (e: Exception) {
+                if (generation != searchGeneration) return@launch
                 _state.update {
                     it.copy(
                         loading = false,
@@ -122,16 +109,6 @@ class SearchViewModel(
     }
 }
 
-/**
- * Pure-data UI state. Filtered for the active category lives in
- * [visibleResults] (a derived property) so the ViewModel itself doesn't
- * have to expose two parallel lists; consumers can call
- * [SearchUiState.visibleResults] to get the right slice for the screen.
- *
- * The actual matching rules live in [CategoryRules] so the front-end
- * tab filter, the per-source `matchesCategory()` and any future
- * "is this a net-disk?" query share one definition.
- */
 data class SearchUiState(
     val keyword: String = "",
     val category: ResourceCategory = ResourceCategory.ALL,

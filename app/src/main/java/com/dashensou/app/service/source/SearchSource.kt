@@ -49,6 +49,10 @@ sealed class SearchOutcome {
             /** Body came back but the parser couldn't make sense of it. */
             fun parse(message: String, cause: Throwable? = null) =
                 Failure(message, FailureKind.PARSE, cause)
+
+            /** All sources returned successfully but no rows matched. */
+            fun empty(message: String) =
+                Failure(message, FailureKind.EMPTY)
         }
     }
 }
