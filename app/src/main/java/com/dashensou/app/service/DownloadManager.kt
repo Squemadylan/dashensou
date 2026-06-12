@@ -76,6 +76,24 @@ object DownloadManager {
     /** In-flight OkHttp direct downloads keyed by Room record id. */
     private val directDownloadJobs = ConcurrentHashMap<Long, Job>()
 
+    /** In-memory progress stream. UI subscribes for partial row updates. */
+    private val _progressUpdates = kotlinx.coroutines.flow.MutableSharedFlow<
+        com.dashensou.app.service.DownloadProgress>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    val progressUpdates: kotlinx.coroutines.flow.SharedFlow<com.dashensou.app.service.DownloadProgress> = _progressUpdates
+
+    /** Latest in-flight progress per record id — keeps rows visually correct
+     *  after an Activity rebuild / tab switch (the SharedFlow is hot and does
+     *  not replay history). */
+    private val activeProgressSnapshot = ConcurrentHashMap<Long, com.dashensou.app.service.DownloadProgress>()
+
+    /** Returns the most recently observed progress for an actively-downloading
+     *  record. Returns null when the record isn't currently in flight. */
+    fun peekProgress(recordId: Long): com.dashensou.app.service.DownloadProgress? =
+        activeProgressSnapshot[recordId]
+
     /**
      * Initialise the singleton. Idempotent — safe to call from
      * Application.onCreate and from the first Activity that needs it.
@@ -171,24 +189,17 @@ object DownloadManager {
             val privateFilePath = ProgressDownloader.getFilePath(ctx, title, fileType ?: "")
 
             try {
+                // 关键：下载中只推内存进度流，不写数据库（避免整行 rebind 闪烁）
                 val ok = ProgressDownloader.download(
                     context = ctx,
                     record = record.copy(filePath = privateFilePath)
                 ) { progress ->
-                    kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                        val dao = App.database.downloadRecordDao()
-                        val current = dao.getDownloadRecordById(recordId)
-                        if (current != null && current.status == DownloadStatus.DOWNLOADING) {
-                            dao.updateDownloadRecord(
-                                current.copy(
-                                    downloadSize = progress.downloadedBytes,
-                                    fileSize = if (progress.totalBytes > 0) progress.totalBytes else current.fileSize
-                                )
-                            )
-                        }
-                    }
+                    activeProgressSnapshot[recordId] = progress
+                    _progressUpdates.tryEmit(progress)
                 }
 
+                // 下载完成：写一次最终状态到数据库（触发 UI 更新一次）
+                activeProgressSnapshot.remove(recordId)
                 Log.i(TAG, "enqueueDirectDownload: result=$ok")
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
@@ -209,6 +220,7 @@ object DownloadManager {
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
                 }
             } catch (e: CancellationException) {
+                activeProgressSnapshot.remove(recordId)
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId)
                 if (current?.status == DownloadStatus.DOWNLOADING) {
@@ -218,6 +230,7 @@ object DownloadManager {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "enqueueDirectDownload: download body failed", e)
+                activeProgressSnapshot.remove(recordId)
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
                 if (current.status != DownloadStatus.PAUSED) {
@@ -410,6 +423,39 @@ object DownloadManager {
     fun isQuarkInstalled(): Boolean {
         val ctx = appContext ?: return false
         return NetDiskUtils.QUARK_PACKAGE_CANDIDATES.any { isAppInstalled(ctx, it) }
+    }
+
+    /**
+     * Open an HTTP(S) direct URL in Quark Browser. Quark will detect the
+     * downloadable resource via its built-in sniffer and offer the user
+     * a much faster offline download. The point of this function is to
+     * bypass the small, rate-limited public CDNs the search aggregators
+     * return (typically a few KB/s) and let Quark's CDN pull the file
+     * instead — usually 5-10x faster on the same link.
+     */
+    fun openHttpInQuark(url: String): Boolean {
+        val ctx = appContext ?: run {
+            Log.w(TAG, "openHttpInQuark called before init()")
+            return false
+        }
+        val trimmed = url.trim()
+        if (trimmed.isBlank() || !trimmed.startsWith("http")) return false
+        val installedPkgs = NetDiskUtils.QUARK_PACKAGE_CANDIDATES.filter { isAppInstalled(ctx, it) }
+        if (installedPkgs.isEmpty()) {
+            Log.w(TAG, "openHttpInQuark: Quark not installed")
+            return false
+        }
+        // Try a targeted VIEW first (lands directly in Quark with the
+        // resource sniffer active), then fall back to the system chooser.
+        for (pkg in installedPkgs) {
+            if (startViewIntent(ctx, trimmed, pkg)) {
+                Log.i(TAG, "openHttpInQuark success: pkg=$pkg")
+                return true
+            }
+        }
+        if (startViewChooser(ctx, trimmed, "用夸克下载")) return true
+        Log.w(TAG, "openHttpInQuark: all strategies failed")
+        return false
     }
 
     private fun startViewIntent(ctx: Context, uri: String, packageName: String): Boolean {

@@ -15,6 +15,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.net.URL
 import kotlin.coroutines.coroutineContext
 
 data class DownloadProgress(
@@ -65,22 +66,25 @@ object ProgressDownloader {
         record: DownloadRecord,
         onProgress: (DownloadProgress) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
-        val fileDir = File(context.filesDir, "downloads")
-        if (!fileDir.exists()) {
-            fileDir.mkdirs()
+        // Use the file extension hint from the search source when we have one
+        // (it's preferred over guessing from the URL's path component, which
+        // is often obfuscated on short-link / pan-search redirectors).
+        val extHint = run {
+            val u = record.url
+            val q = u.indexOf('?')
+            val pathNoQuery = if (q >= 0) u.substring(0, q) else u
+            val dot = pathNoQuery.lastIndexOf('.')
+            if (dot < 0 || dot < pathNoQuery.length - 8) "" else pathNoQuery.substring(dot + 1).lowercase()
         }
-        val safeFileName = record.title.replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]"), "_")
-            .take(50)
-        val extension = record.filePath.substringAfterLast('.', "download")
-        val fileName = if (extension.isNotBlank() && extension.length <= 10) {
-            "$safeFileName.$extension"
-        } else {
-            "$safeFileName.download"
-        }
-        val outputFile = File(fileDir, fileName)
+        val outputFile = resolveOutputFile(context, record.title, extHint)
+        Log.i(TAG, "download start: title=${record.title} url=${record.url} extHint=$extHint target=${outputFile.absolutePath}")
 
         try {
-            val request = HttpClient.newGet(record.url)
+            // Direct-URL ebook sources often serve bytes from a short-link
+            // CDN that requires real-browser headers (UA, Referer, Accept).
+            // Using HttpClient's minimal "DaShenSou/1.0" UA is what made
+            // the server return an empty body and then close the socket.
+            val request = buildBrowserLikeRequest(record.url)
             val response = HttpClient.execute(request, perCallTimeoutMs = DOWNLOAD_TIMEOUT_MS)
                 ?: return@withContext false
 
@@ -155,6 +159,21 @@ object ProgressDownloader {
                 )
 
                 Log.i(TAG, "download completed: ${outputFile.absolutePath} (${downloadedBytes}B)")
+                // Final success guard: bytes were written, the file exists,
+                // and its on-disk size matches what we streamed. A 0-byte
+                // file here would otherwise show up as "完成" with no
+                // actual content — the symptom the user just hit.
+                if (downloadedBytes <= 0L) {
+                    Log.e(TAG, "download marked successful but 0 bytes streamed; treating as failure")
+                    outputFile.delete()
+                    return@withContext false
+                }
+                val onDiskLen = outputFile.length()
+                if (onDiskLen <= 0L || (totalBytes > 0L && onDiskLen < totalBytes)) {
+                    Log.e(TAG, "download size mismatch: streamed=$downloadedBytes onDisk=$onDiskLen total=$totalBytes; treating as failure")
+                    outputFile.delete()
+                    return@withContext false
+                }
                 true
             }
         } catch (e: CancellationException) {
@@ -168,11 +187,25 @@ object ProgressDownloader {
     }
 
     fun getFilePath(context: Context, title: String, extension: String): String {
+        return resolveOutputFile(context, title, extension).absolutePath
+    }
+
+    /**
+     * Single source of truth for the on-disk path of a download.
+     * Both the path stored in Room and the bytes-on-disk target MUST go
+     * through this function — otherwise the row would point at a file
+     * that was never written, and "完成" would silently be a 0-byte ghost.
+     */
+    private fun resolveOutputFile(context: Context, title: String, extension: String): File {
         val fileDir = File(context.filesDir, "downloads")
+        if (!fileDir.exists()) {
+            fileDir.mkdirs()
+        }
         val safeFileName = title.replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]"), "_")
             .take(50)
+            .ifBlank { "download" }
         val ext = if (extension.isNotBlank() && extension.length <= 10) extension else "download"
-        return File(fileDir, "$safeFileName.$ext").absolutePath
+        return File(fileDir, "$safeFileName.$ext")
     }
 
     fun deleteDownloadedFile(context: Context, filePath: String): Boolean {
@@ -182,5 +215,37 @@ object ProgressDownloader {
             Log.w(TAG, "delete file failed: $filePath", e)
             false
         }
+    }
+
+    /**
+     * Build a request that looks like a real mobile browser. The DIRECT_URL
+     * ebook sources (Gutenberg mirrors, 52book's short-link CDNs, etc.)
+     * inspect User-Agent and Referer; the "DaShenSou/1.0 (Android)" UA
+     * we ship elsewhere trips a 403 / empty-body / "Socket closed" on a
+     * meaningful chunk of hosts. Sending a real Chrome-on-Android UA
+     * (plus a same-origin Referer when the URL is HTTPS) makes the same
+     * URL return the actual bytes.
+     */
+    private fun buildBrowserLikeRequest(url: String): Request {
+        val builder = Request.Builder()
+            .url(url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+            )
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+            .header("Connection", "keep-alive")
+            .get()
+        // Same-origin Referer is a strong signal to anti-hotlink middlewares.
+        try {
+            val u = URL(url)
+            val ref = "${u.protocol}://${u.host}/"
+            builder.header("Referer", ref)
+        } catch (_: Exception) {
+            // Not a parseable URL — let the request go without Referer.
+        }
+        return builder.build()
     }
 }

@@ -770,6 +770,24 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+        // In-memory progress stream: updates only the row's progress bar
+        // and MB text, never rebinds the full row.
+        lifecycleScope.launch {
+
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+
+                DownloadManager.progressUpdates.collect { progress ->
+                    downloadAdapter.updateProgressOnly(
+                        recordId = progress.recordId,
+                        downloadedBytes = progress.downloadedBytes,
+                        totalBytes = progress.totalBytes
+                    )
+                }
+
+            }
+
+        }
+
     }
 
 
@@ -837,6 +855,23 @@ class MainActivity : AppCompatActivity() {
         binding.downloadEmpty.visibility = if (records.isEmpty()) View.VISIBLE else View.GONE
 
         binding.downloadResults.visibility = if (records.isEmpty()) View.GONE else View.VISIBLE
+
+        // Paint in-flight progress on rows that are currently downloading.
+        // Progress data comes from in-memory snapshot; we don't write it
+        // to the DB while the transfer is running so the row is never
+        // rebind()-ed mid-download.
+        records.forEach { record ->
+            if (record.status == com.dashensou.app.data.model.DownloadStatus.DOWNLOADING) {
+                val snap = DownloadManager.peekProgress(record.id)
+                if (snap != null) {
+                    downloadAdapter.updateProgressOnly(
+                        recordId = snap.recordId,
+                        downloadedBytes = snap.downloadedBytes,
+                        totalBytes = snap.totalBytes
+                    )
+                }
+            }
+        }
 
     }
 
@@ -1024,19 +1059,36 @@ class MainActivity : AppCompatActivity() {
 
             result.netDiskType == NetDiskType.DIRECT_URL -> {
 
-                DownloadManager.enqueueDirectDownload(
+                // 直链源 (免费小带宽 CDN) 经常几 KB/s 慢,弹一个选择:
+                //   - 直接下: 当文件小时够用,无需装夸克
+                //   - 推夸克: 夸克有自己的高速下载通道,通常 5-10x 快
+                val quarkAvailable = DownloadManager.isQuarkInstalled()
+                val builder = AlertDialog.Builder(this)
+                    .setTitle("选择下载方式")
+                    .setMessage(
+                        if (quarkAvailable)
+                            "直链源速度可能较慢,推荐用夸克离线下载。\n\n用直链 = 当前 App 内下载\n用夸克 = 由夸克浏览器接管,速度更快"
+                        else
+                            "直链源速度可能较慢,推荐安装夸克浏览器获得更快的下载速度"
+                    )
+                    .setPositiveButton("用直链") { _, _ ->
+                        DownloadManager.enqueueDirectDownload(
+                            title = result.title,
+                            url = result.url,
+                            category = result.category,
+                            fileType = result.fileType
+                        )
+                        Toast.makeText(this, "已开始下载 (可能较慢)", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("取消", null)
 
-                    title = result.title,
+                if (quarkAvailable) {
+                    builder.setNeutralButton("用夸克") { _, _ ->
+                        DownloadManager.openHttpInQuark(result.url)
+                    }
+                }
 
-                    url = result.url,
-
-                    category = result.category,
-
-                    fileType = result.fileType
-
-                )
-
-                Toast.makeText(this, "开始下载", Toast.LENGTH_SHORT).show()
+                builder.show()
 
             }
 
