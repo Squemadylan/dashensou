@@ -10,6 +10,8 @@ import android.content.Context
 
 import android.content.Intent
 
+import android.content.res.Configuration
+
 import android.net.Uri
 
 import android.os.Bundle
@@ -311,6 +313,32 @@ class MainActivity : AppCompatActivity() {
         inFlightDownloadJob = null
 
         super.onDestroy()
+
+    }
+
+
+
+    // uiMode is in configChanges, so this is called instead of recreating
+
+    // when the theme (light/dark) changes. Re-apply the source on/off states
+
+    // and re-render the mine page so the switches stay in sync.
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+
+        super.onConfigurationChanged(newConfig)
+
+        // Re-apply persisted source enabled states (the SearchService and its
+
+        // sources are the same object instances, only the Activity view hierarchy
+
+        // is rebuilt; SourcePrefs.applyTo() mutates the shared source objects).
+
+        SourcePrefs.applyTo(this, searchViewModel.searchService.sources)
+
+        // Re-render the mine page so switches reflect the re-applied state.
+
+        renderMineSources()
 
     }
 
