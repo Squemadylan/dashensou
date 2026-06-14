@@ -42,10 +42,12 @@ class SearchService(
         // snappy under fan-out.
         private const val MAX_RESULTS_PER_SOURCE = 200
         private const val SOURCE_WEIGHT_WANZHAN = 100
+        // 原本 pan.club 三源（夸克/百度/阿里）覆盖了三家主流网盘，
+        // 现在 pan.club 域名无法解析，改由 PanSouSource (so.252035.xyz)
+        // 和 PansouCcSource (pansou.cc) 承担对应职责，因此权重上调。
         private const val SOURCE_WEIGHT_PANSOU252 = 95
         private const val SOURCE_WEIGHT_API52 = 90
-        private const val SOURCE_WEIGHT_PANSOU = 80
-        private const val SOURCE_WEIGHT_PANCLUB = 70
+        private const val SOURCE_WEIGHT_PANSOU = 85
         private const val SOURCE_WEIGHT_XIAOSHUO = 60
         private const val SOURCE_WEIGHT_AIQU = 55
         private const val SOURCE_WEIGHT_OPENLIBRARY = 40
@@ -76,11 +78,14 @@ class SearchService(
 
         fun defaultSources(wanzhanApiKeys: List<String> = emptyList()): List<SearchSource> = listOf(
             WanzhanApiSource(apiKeys = wanzhanApiKeys).apply { enabled = true },
+            // so.252035.xyz /api/search 返回 baidu、aliyun、quark、xunlei、123pan 等
+            // 全部主流网盘的 JSON 结果，承担之前由 pan.club 三源覆盖的搜索。
             PanSouSource().apply { enabled = true },
+            // pansou.cc 作为备用，列表页可抓到百夸阿三家网盘。
             PansouCcSource().apply { enabled = true },
-            PanClubQuarkSource().apply { enabled = true },
-            PanClubBaiduSource().apply { enabled = true },
-            PanClubAlipanSource().apply { enabled = true },
+            // pan.club 三源已失效（域名无法解析，DNS lookup 失败），
+            // 从 active 列表中移除以避免搜索超时与失败提示。
+            // 保留类定义以便 pan.club 恢复后可快速重新启用。
             XiaoShuoApiSource().apply { enabled = true },
             AiQuSource().apply { enabled = true },
             Api52Source().apply { enabled = false },
@@ -100,13 +105,14 @@ class SearchService(
             "pansou_252" -> SOURCE_WEIGHT_PANSOU252
             "pansou_cc" -> SOURCE_WEIGHT_PANSOU
             "api52" -> SOURCE_WEIGHT_API52
-            "panclub_quark",
-            "panclub_baidu",
-            "panclub_alipan" -> SOURCE_WEIGHT_PANCLUB
             "xiaoshuo" -> SOURCE_WEIGHT_XIAOSHUO
             "aiqu225" -> SOURCE_WEIGHT_AIQU
             "openlibrary" -> SOURCE_WEIGHT_OPENLIBRARY
             "gutendex" -> SOURCE_WEIGHT_GUTENDEX
+            // 保留兜底(占位，因 pan.club 原三源目前已失效)
+            "panclub_quark",
+            "panclub_baidu",
+            "panclub_alipan" -> 0
             else -> 10
         }
 
@@ -277,7 +283,7 @@ class SearchService(
     private fun buildDedupeKey(item: SearchResult): String {
         val normalizedUrl = item.url.substringBefore('?').lowercase(Locale.ROOT)
         val normalizedTitle = item.title.lowercase(Locale.ROOT)
-            .replace("[^a-z0-9\\u4e00-\\u9fa5]".toRegex(), "")
+            .replace("[^a-z0-9${'\u4e00'}-${'\u9fa5'}]".toRegex(), "")
             .take(40)
         val type = item.netDiskType.name
         return "$type|$normalizedTitle|$normalizedUrl"
