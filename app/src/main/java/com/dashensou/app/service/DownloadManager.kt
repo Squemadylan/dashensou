@@ -165,7 +165,9 @@ object DownloadManager {
         currentScope.launch {
             val fileName = getFileName(title, url, fileType)
             val subDir = subDirFor(category)
-            val finalPath = MediaStorePaths.recordPath(subDir, fileName)
+            // 注意：filePath 是 MediaStore 里的相对路径（"Download/Book/凡人修仙传.txt"），
+            // 与实际写入 MediaStore 的 DISPLAY_NAME 一致。
+            val filePath = MediaStorePaths.recordPath(subDir, fileName)
 
             Log.i(TAG, "enqueueDirectDownload: title=$title url=$url subDir=$subDir fileName=$fileName")
 
@@ -173,7 +175,7 @@ object DownloadManager {
                 DownloadRecord(
                     title = title,
                     url = url,
-                    filePath = finalPath,
+                    filePath = filePath,
                     fileSize = 0,
                     downloadSize = 0,
                     status = DownloadStatus.DOWNLOADING,
@@ -185,38 +187,46 @@ object DownloadManager {
             )
             directDownloadJobs[recordId] = coroutineContext[Job]!!
 
-            val record = App.database.downloadRecordDao().getDownloadRecordById(recordId) ?: return@launch
-            val privateFilePath = ProgressDownloader.getFilePath(ctx, title, fileType ?: "")
+            activeProgressSnapshot[recordId] = DownloadProgress(
+                recordId = recordId,
+                downloadedBytes = 0,
+                totalBytes = 0,
+                speedBytesPerSec = 0
+            )
 
             try {
-                // 关键：下载中只推内存进度流，不写数据库（避免整行 rebind 闪烁）
-                val ok = ProgressDownloader.download(
+                // DirectDownloader 通过 MediaStore.Downloads 写入公共 Downloads 文件夹，
+                // 文件对用户可见（无需 MANAGE_EXTERNAL_STORAGE）。
+                // 之前 ProgressDownloader 写入了 app-private 目录，但 filePath 记录
+                // 的是 MediaStore 路径，两边完全不匹配，导致"文件不存在"问题。
+                val (ok, actualBytes) = DirectDownloader.download(
                     context = ctx,
-                    record = record.copy(filePath = privateFilePath)
+                    url = url,
+                    displayName = fileName,
+                    subDir = subDir,
+                    recordId = recordId
                 ) { progress ->
                     activeProgressSnapshot[recordId] = progress
                     _progressUpdates.tryEmit(progress)
                 }
 
-                // 下载完成：写一次最终状态到数据库（触发 UI 更新一次）
                 activeProgressSnapshot.remove(recordId)
-                Log.i(TAG, "enqueueDirectDownload: result=$ok")
+                Log.i(TAG, "enqueueDirectDownload: ok=$ok bytes=$actualBytes")
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
                 if (current.status == DownloadStatus.PAUSED) return@launch
 
                 if (ok) {
-                    val finalFile = java.io.File(privateFilePath)
+                    // 用 DirectDownloader 返回的实际字节数更新数据库，而不是原来
+                    // 的默认值 0。这样 DownloadRecord 里 fileSize 总是有意义的。
                     dao.updateDownloadRecord(
                         current.copy(
                             status = DownloadStatus.COMPLETED,
-                            filePath = privateFilePath,
-                            fileSize = finalFile.length(),
-                            downloadSize = finalFile.length()
+                            fileSize = actualBytes,
+                            downloadSize = actualBytes
                         )
                     )
                 } else {
-                    ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
                 }
             } catch (e: CancellationException) {
@@ -226,7 +236,6 @@ object DownloadManager {
                 if (current?.status == DownloadStatus.DOWNLOADING) {
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.PAUSED))
                 }
-                ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "enqueueDirectDownload: download body failed", e)
@@ -234,7 +243,6 @@ object DownloadManager {
                 val dao = App.database.downloadRecordDao()
                 val current = dao.getDownloadRecordById(recordId) ?: return@launch
                 if (current.status != DownloadStatus.PAUSED) {
-                    ProgressDownloader.deleteDownloadedFile(ctx, privateFilePath)
                     dao.updateDownloadRecord(current.copy(status = DownloadStatus.FAILED))
                 }
             } finally {
@@ -278,8 +286,19 @@ object DownloadManager {
     }
 
     private fun getFileName(title: String, url: String, fileType: String? = null): String {
-        val cleaned = title.replace("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]".toRegex(), "_")
-        val baseName = if (cleaned.length > 50) cleaned.substring(0, 50) else cleaned
+        // 注意：Java regex 引擎不支持 \uXXXX 在字符类内表示 Unicode 范围，
+        // 因此原来的 "\\u4e00-\\u9fa5" 是无效的，中文字符全被替换成了 "_"。
+        // 改用 Kotlin Unicode escape ${} 正确表示 CJK 统一表意文字范围。
+        val cleaned = title.replace("[^a-zA-Z0-9${'\u4e00'}-${'\u9fa5'}.-]".toRegex(), "_")
+        // 如果 cleaned 为空或全是下划线，用标题的前50字符作为文件名，
+        // 避免出现 "___.txt" 这类无意义的文件名。
+        val baseName = if (cleaned.isBlank() || cleaned.all { it == '_' }) {
+            title.take(50).replace(Regex("[^a-zA-Z0-9${'\u4e00'}-${'\u9fa5'}. -]"), "_")
+                .trim('_', ' ')
+                .ifBlank { "download" }
+        } else {
+            cleaned.take(50)
+        }
 
         // 1) Trust the fileType hint from the search source first — it's the
         //    most reliable signal (e.g. "epub", "pdf", "mobi", "video", "zip").

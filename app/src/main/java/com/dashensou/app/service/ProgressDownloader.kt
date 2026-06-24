@@ -201,7 +201,7 @@ object ProgressDownloader {
         if (!fileDir.exists()) {
             fileDir.mkdirs()
         }
-        val safeFileName = title.replace(Regex("[^a-zA-Z0-9\\u4e00-\\u9fa5.-]"), "_")
+        val safeFileName = title.replace(Regex("[^a-zA-Z0-9${'\u4e00'}-${'\u9fa5'}.-]"), "_")
             .take(50)
             .ifBlank { "download" }
         val ext = if (extension.isNotBlank() && extension.length <= 10) extension else "download"

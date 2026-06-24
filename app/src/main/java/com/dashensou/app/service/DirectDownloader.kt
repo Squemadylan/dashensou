@@ -28,26 +28,38 @@ object DirectDownloader {
     private const val DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000L // 5 minutes for large files
     private const val MAX_BYTES = 512L * 1024 * 1024 // 512 MiB safety cap
 
+    /**
+     * Download a file and persist it into the public Downloads/<subDir>/ folder
+     * via MediaStore. Works on Android 10+ scoped storage without needing
+     * MANAGE_EXTERNAL_STORAGE.
+     *
+     * Returns a pair of (success, actualBytesWritten). The bytesWritten is
+     * always valid on success, and is 0 on failure. This allows the caller to
+     * record the real file size in the database without a separate query.
+     */
     suspend fun download(
         context: Context,
         url: String,
         displayName: String,
-        subDir: String
-    ): Boolean = withContext(Dispatchers.IO) {
+        subDir: String,
+        recordId: Long = 0,
+        onProgress: ((DownloadProgress) -> Unit)? = null
+    ): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
+        var actualBytes: Long = 0
         try {
             val request = HttpClient.newGet(url)
             val response = HttpClient.execute(request, perCallTimeoutMs = DOWNLOAD_TIMEOUT_MS)
-                ?: return@withContext false
+                ?: return@withContext Pair(false, 0L)
             response.use { resp ->
                 if (!resp.isSuccessful) {
                     Log.e(TAG, "HTTP ${resp.code} for $url")
-                    return@withContext false
+                    return@withContext Pair(false, 0L)
                 }
-                val body = resp.body ?: return@withContext false
+                val body = resp.body ?: return@withContext Pair(false, 0L)
                 val contentLength = body.contentLength()
                 if (contentLength > MAX_BYTES) {
                     Log.e(TAG, "refusing download > $MAX_BYTES bytes: $contentLength")
-                    return@withContext false
+                    return@withContext Pair(false, 0L)
                 }
 
                 val resolver = context.contentResolver
@@ -76,22 +88,22 @@ object DirectDownloader {
                     resolver.insert(collection, values)
                 } catch (e: Exception) {
                     Log.e(TAG, "MediaStore.insert threw for $displayName", e)
-                    return@withContext false
+                    return@withContext Pair(false, 0L)
                 }
                 if (uri == null) {
                     Log.e(TAG, "MediaStore.insert returned null for $displayName")
-                    return@withContext false
+                    return@withContext Pair(false, 0L)
                 }
                 Log.i(TAG, "inserted uri=$uri for ${MediaStorePaths.recordPath(subDir, displayName)}")
 
                 try {
                     resolver.openOutputStream(uri)?.use { out ->
                         body.byteStream().use { input ->
-                            writeWithCap(input, out, contentLength)
+                            actualBytes = writeWithProgress(input, out, contentLength, recordId, onProgress)
                         }
                     } ?: run {
                         resolver.delete(uri, null, null)
-                        return@withContext false
+                        return@withContext Pair(false, 0L)
                     }
                 } catch (e: CancellationException) {
                     resolver.delete(uri, null, null)
@@ -99,7 +111,7 @@ object DirectDownloader {
                 } catch (e: Exception) {
                     Log.e(TAG, "write body failed", e)
                     resolver.delete(uri, null, null)
-                    return@withContext false
+                    return@withContext Pair(false, 0L)
                 }
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -108,24 +120,32 @@ object DirectDownloader {
                     resolver.update(uri, values, null, null)
                 }
 
-                Log.i(TAG, "saved $displayName (${contentLength}B) to Downloads/$subDir")
-                true
+                Log.i(TAG, "saved $displayName (${actualBytes}B) to Downloads/$subDir")
+                Pair(true, actualBytes)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "download failed for $url", e)
-            false
+            Pair(false, 0L)
         }
     }
 
-    private fun writeWithCap(
+    /**
+     * Write input stream to output stream while reporting progress.
+     * Returns the total number of bytes written.
+     */
+    private fun writeWithProgress(
         input: java.io.InputStream,
         out: OutputStream,
-        declaredLength: Long
-    ) {
+        declaredLength: Long,
+        recordId: Long,
+        onProgress: ((DownloadProgress) -> Unit)?
+    ): Long {
         val buffer = ByteArray(8192)
         var total = 0L
+        var lastEmitTime = System.currentTimeMillis()
+        var lastBytes = 0L
         while (true) {
             val read = input.read(buffer)
             if (read == -1) break
@@ -134,11 +154,29 @@ object DirectDownloader {
                 throw IOException("download exceeds $MAX_BYTES bytes")
             }
             out.write(buffer, 0, read)
+            // 进度回调：每 500ms 推送一次，与 ProgressDownloader 保持一致
+            val now = System.currentTimeMillis()
+            if (now - lastEmitTime >= 500L && onProgress != null) {
+                val speed = if (now - lastEmitTime > 0) {
+                    ((total - lastBytes) * 1000L) / (now - lastEmitTime)
+                } else 0L
+                onProgress(
+                    DownloadProgress(
+                        recordId = recordId,
+                        downloadedBytes = total,
+                        totalBytes = declaredLength,
+                        speedBytesPerSec = speed
+                    )
+                )
+                lastEmitTime = now
+                lastBytes = total
+            }
         }
         out.flush()
         if (declaredLength > 0 && total != declaredLength) {
             Log.w(TAG, "size mismatch: declared=$declaredLength written=$total")
         }
+        return total
     }
 
 }
