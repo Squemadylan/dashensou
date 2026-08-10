@@ -159,8 +159,8 @@ object AppUpdateManager {
         BuildConfig.UPDATE_MANIFEST_URL.trim().takeIf { it.isNotEmpty() },
         BuildConfig.UPDATE_MANIFEST_URL_MIRROR.trim().takeIf { it.isNotEmpty() },
         // 旧安装包 BuildConfig 可能仍指向历史 commit；始终再试 main，取 versionCode 最高的一份
-        "https://raw.githubusercontent.com/Squemadylan/dashensou/main/app/update.json",
-        "https://cdn.jsdelivr.net/gh/Squemadylan/dashensou@main/app/update.json"
+        "https://raw.githubusercontent.com/Squemadylan/dashensou/master/app/update.json",
+        "https://cdn.jsdelivr.net/gh/Squemadylan/dashensou@master/app/update.json"
     ).distinct()
 
     /**
