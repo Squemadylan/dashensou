@@ -1,0 +1,8 @@
+{
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "minVersionCode": 1,
+  "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.0/app-release.apk",
+  "changelog": "v1.0.0: 初始版本。发版时请同步更新本文件的 versionCode / minVersionCode / apkUrl / sha256。",
+  "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases"
+}

@@ -38,4 +38,5 @@
     <color name="colorPrimaryDark">@color/colorPrimary</color>
     <color name="colorGray">#74777F</color>
     <color name="scrim">#52000000</color>
+    <color name="update_scrim">#B3000000</color>
 </resources>

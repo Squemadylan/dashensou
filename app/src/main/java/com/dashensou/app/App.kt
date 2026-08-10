@@ -24,6 +24,7 @@ class App : Application() {
         // make "what's the current schema version?" answerable by
         // grep.
         private const val TAG = "AppDatabase"
+        const val PREFS_NAME: String = "dashensou_prefs"
         const val DB_VERSION: Int = 2
         const val DB_NAME: String = "dashensou_db"
 

@@ -82,6 +82,7 @@ import com.dashensou.app.util.DiskLabels
 
 import com.dashensou.app.util.PansouGotoResolver
 
+import com.dashensou.app.util.AppUpdateManager
 import com.dashensou.app.util.SourcePrefs
 
 import com.dashensou.app.util.UrlKinds
@@ -214,6 +215,8 @@ class MainActivity : AppCompatActivity() {
 
 
 
+    private var startupUpdateCheckDone = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
 
         // Apply the persisted theme mode BEFORE super.onCreate() so
@@ -292,7 +295,14 @@ class MainActivity : AppCompatActivity() {
         observeViewModels()
 
         setupThemeSwitcher()
+    }
 
+    override fun onResume() {
+        super.onResume()
+        if (!startupUpdateCheckDone) {
+            startupUpdateCheckDone = true
+            AppUpdateManager.runStartupCheck(this)
+        }
     }
 
 
@@ -583,6 +593,14 @@ class MainActivity : AppCompatActivity() {
 
             Toast.makeText(this, "已复制群号 $QQ_GROUP_NUMBER", Toast.LENGTH_SHORT).show()
 
+        }
+
+        binding.mineCheckUpdate.setOnClickListener {
+            AppUpdateManager.runManualCheck(this)
+        }
+
+        binding.mineManualUpdate.setOnClickListener {
+            AppUpdateManager.openManualUpdatePage(this)
         }
 
         renderMineSources()
