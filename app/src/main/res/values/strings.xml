@@ -101,6 +101,12 @@
     <string name="mine_about_title">关于</string>
     <string name="result_source_label">来源</string>
 
+    <string name="health_check_title">数据源健康度</string>
+    <string name="health_check_button">测试</string>
+    <string name="health_check_running">测试中…</string>
+    <string name="health_latency_ms">%1$dms</string>
+    <string name="source_fail">失败</string>
+
     <!-- App update (force / optional) -->
     <string name="mine_update_section">应用更新</string>
     <string name="update_check_title">检查更新</string>
