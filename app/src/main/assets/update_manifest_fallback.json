@@ -1,9 +1,8 @@
 {
-  "versionCode": 2,
-  "versionName": "1.0.1",
-  "minVersionCode": 2,
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "minVersionCode": 1,
   "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.1-debug/dashensou-1.0.1.apk",
-  "changelog": "v1.0.1: force-update test. Clients below versionCode 2 must update.",
-  "sha256": "0c4225456f20164bc34c8b3f919087039b2b9c501351340ddb7ce2f48a163390",
-  "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases/tag/v1.0.1-debug"
+  "changelog": "v1.0.0: current release. Force update disabled after testing.",
+  "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases"
 }
