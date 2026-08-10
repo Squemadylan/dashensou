@@ -1,8 +1,9 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0.0",
-  "minVersionCode": 1,
-  "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.0/app-release.apk",
-  "changelog": "v1.0.0: 初始版本。发版时请同步更新本文件的 versionCode / minVersionCode / apkUrl / sha256。",
-  "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases"
+  "versionCode": 2,
+  "versionName": "1.0.1",
+  "minVersionCode": 2,
+  "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.1-debug/dashensou-1.0.1.apk",
+  "changelog": "v1.0.1: 强制更新测试。低于 versionCode 2 的安装包必须更新。",
+  "sha256": "0c4225456f20164bc34c8b3f919087039b2b9c501351340ddb7ce2f48a163390",
+  "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases/tag/v1.0.1-debug"
 }
