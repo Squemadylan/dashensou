@@ -12,11 +12,9 @@ import com.dashensou.app.util.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class PanSouSource(
     private val baseUrl: String = DEFAULT_BASE_URL
@@ -35,15 +33,6 @@ class PanSouSource(
         private const val TAG = "PanSouSource"
         const val DEFAULT_BASE_URL = "https://so.252035.xyz"
         private const val API_BUDGET_MS = 25_000L
-
-        /** Dedicated client — do not widen the global [HttpClient] pool. */
-        private val apiClient: OkHttpClient by lazy {
-            HttpClient.client.newBuilder()
-                .readTimeout(25, TimeUnit.SECONDS)
-                .writeTimeout(25, TimeUnit.SECONDS)
-                .callTimeout(API_BUDGET_MS, TimeUnit.MILLISECONDS)
-                .build()
-        }
     }
 
     override suspend fun search(
@@ -70,12 +59,8 @@ class PanSouSource(
             .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
-        val response = try {
-            apiClient.newCall(request).execute()
-        } catch (e: Exception) {
-            Log.e(TAG, "request failed: ${e.message}", e)
-            return@withContext SearchOutcome.Failure.network("网络异常: ${e.message ?: "未知"}", e)
-        }
+        val response = HttpClient.execute(request, API_BUDGET_MS)
+            ?: return@withContext SearchOutcome.Failure.network("网络异常")
         response.use { resp ->
             if (resp.code == 429) {
                 return@withContext SearchOutcome.Failure.sourceDown("网盘来源API限流,请稍后再试")

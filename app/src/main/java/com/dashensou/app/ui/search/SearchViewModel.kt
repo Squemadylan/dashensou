@@ -2,9 +2,11 @@ package com.dashensou.app.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dashensou.app.App
 import com.dashensou.app.data.model.ResourceCategory
 import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.service.SearchService
+import com.dashensou.app.service.linkcheck.LinkChecker
 import com.dashensou.app.service.source.SearchOutcome
 import com.dashensou.app.util.CategoryRules
 import kotlinx.coroutines.CancellationException
@@ -18,109 +20,140 @@ import kotlinx.coroutines.launch
 /**
  * Owns the search-input state and the latest in-flight search result.
  */
-class SearchViewModel(
-    val searchService: SearchService = SearchService()
-) : ViewModel() {
+class SearchViewModel : ViewModel() {
+    val searchService: SearchService
+        get() = App.searchService
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     private var inFlight: Job? = null
+    private var linkCheckJob: Job? = null
     private var searchGeneration = 0
 
-    fun setKeyword(keyword: String) {
-        _state.update { it.copy(keyword = keyword) }
+    data class SearchUiState(
+        val keyword: String = "",
+        val page: Int = 1,
+        val category: ResourceCategory = ResourceCategory.ALL,
+        val results: List<SearchResult> = emptyList(),
+        val isLoading: Boolean = false,
+        val failure: SearchOutcome.Failure? = null
+    )
+
+    fun search(keyword: String, page: Int = 1) {
+        val cat = _state.value.category
+        searchInternal(keyword, page, cat)
     }
 
     fun setCategory(category: ResourceCategory) {
-        _state.update { it.copy(category = category) }
+        val kw = _state.value.keyword
+        searchInternal(kw, 1, category)
     }
 
-    fun refresh() = search(
-        keyword = _state.value.keyword,
-        page = 1,
-        category = _state.value.category
-    )
+    fun refresh() {
+        val s = _state.value
+        searchInternal(s.keyword, s.page, s.category)
+    }
 
     fun clear() {
         inFlight?.cancel()
         inFlight = null
-        _state.update {
-            SearchUiState(category = it.category)
-        }
+        linkCheckJob?.cancel()
+        linkCheckJob = null
+        _state.value = SearchUiState()
     }
 
-    fun search(
-        keyword: String,
-        page: Int = 1,
-        category: ResourceCategory = _state.value.category
-    ) {
-        if (keyword.isBlank()) {
-            clear()
+    fun clearFailure() {
+        _state.update { it.copy(failure = null) }
+    }
+
+    private fun searchInternal(keyword: String, page: Int, category: ResourceCategory) {
+        inFlight?.cancel()
+        inFlight = null
+        linkCheckJob?.cancel()
+        linkCheckJob = null
+
+        val cleaned = keyword.trim()
+        val generation = ++searchGeneration
+
+        if (cleaned.isEmpty()) {
+            _state.value = SearchUiState(
+                keyword = "",
+                page = page,
+                category = category,
+                results = emptyList(),
+                isLoading = false
+            )
             return
         }
-        inFlight?.cancel()
-        val generation = ++searchGeneration
-        _state.update {
-            it.copy(keyword = keyword, page = page, category = category, loading = true, failure = null)
-        }
+
+        _state.value = _state.value.copy(
+            keyword = cleaned,
+            page = page,
+            category = category,
+            isLoading = true,
+            failure = null
+        )
+
         inFlight = viewModelScope.launch {
-            try {
-                val outcome = searchService.search(keyword, page, category)
-                if (generation != searchGeneration) return@launch
-                when (outcome) {
-                    is SearchOutcome.Success -> {
-                        _state.update {
-                            if (generation != searchGeneration) return@update it
-                            it.copy(
-                                loading = false,
-                                results = outcome.results,
-                                failure = null
-                            )
-                        }
+            val outcome = try {
+                searchService.search(cleaned, page, category)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                SearchOutcome.Failure.parse("搜索失败: ${t.message}", t)
+            }
+
+            if (generation != searchGeneration) return@launch
+
+            when (outcome) {
+                is SearchOutcome.Success -> {
+                    val filtered = if (category == ResourceCategory.ALL) {
+                        outcome.results
+                    } else {
+                        outcome.results.filter { CategoryRules.matches(it, category) }
                     }
-                    is SearchOutcome.Failure -> {
-                        _state.update {
-                            if (generation != searchGeneration) return@update it
-                            it.copy(loading = false, failure = outcome)
-                        }
-                    }
+                    _state.value = _state.value.copy(
+                        results = filtered,
+                        isLoading = false,
+                        failure = null
+                    )
+                    startLinkChecks(generation, cleaned, filtered)
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (generation != searchGeneration) return@launch
-                _state.update {
-                    it.copy(
-                        loading = false,
-                        failure = SearchOutcome.Failure(
-                            message = "搜索异常: ${e.message}",
-                            kind = com.dashensou.app.service.source.FailureKind.UNKNOWN,
-                            cause = e
-                        )
+                is SearchOutcome.Failure -> {
+                    _state.value = _state.value.copy(
+                        results = emptyList(),
+                        isLoading = false,
+                        failure = outcome
                     )
                 }
             }
         }
     }
 
-    fun clearFailure() {
-        _state.update { it.copy(failure = null) }
-    }
-}
-
-data class SearchUiState(
-    val keyword: String = "",
-    val category: ResourceCategory = ResourceCategory.ALL,
-    val page: Int = 1,
-    val loading: Boolean = false,
-    val results: List<SearchResult> = emptyList(),
-    val failure: SearchOutcome.Failure? = null
-) {
-    val visibleResults: List<SearchResult>
-        get() = if (category == ResourceCategory.ALL) {
-            results
-        } else {
-            results.filter { CategoryRules.matches(it, category) }
+    private fun startLinkChecks(
+        generation: Int,
+        keyword: String,
+        results: List<SearchResult>
+    ) {
+        linkCheckJob?.cancel()
+        linkCheckJob = viewModelScope.launch {
+            LinkChecker.checkResults(results) { updated ->
+                if (generation != searchGeneration) return@checkResults
+                _state.update { s ->
+                    if (s.keyword != keyword) return@update s
+                    val next = s.results.map { row ->
+                        if (sameRow(row, updated)) updated else row
+                    }
+                    s.copy(results = next)
+                }
+            }
         }
+    }
+
+    private fun sameRow(a: SearchResult, b: SearchResult): Boolean {
+        if (a.id.isNotBlank() && b.id.isNotBlank() && a.id == b.id) return true
+        return a.sourceId == b.sourceId &&
+            a.url.equals(b.url, ignoreCase = true)
+    }
 }

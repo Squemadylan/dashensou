@@ -16,8 +16,12 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.databinding.ItemSearchResultBinding
+import com.dashensou.app.service.linkcheck.LinkCheckStatus
 import com.dashensou.app.util.DiskLabels
 import com.dashensou.app.util.UrlKinds
+import android.graphics.Paint
+import androidx.core.content.ContextCompat
+import com.dashensou.app.R
 
 class SearchResultAdapter(
     private val onDownloadClick: (SearchResult) -> Unit
@@ -44,9 +48,18 @@ class SearchResultAdapter(
             binding.resultSize.text = result.size
             binding.resultDate.text = result.date
 
+            val struck = result.linkCheckStatus == LinkCheckStatus.BAD
+            binding.resultTitle.paintFlags = if (struck) {
+                binding.resultTitle.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            } else {
+                binding.resultTitle.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+            }
+
+            bindLinkStatus(result.linkCheckStatus)
+
             // P1#17: provenance row. result_sourceName is the aggregator
-            // (万站API / PanSou 盘搜 / pansou.cc / 夸克网盘 (pan.club) /
-            // etc), as distinct from the net-disk type ("夸克"/"度盘"/"...")
+            // (万站API / PanSou 盘搜 / pansou.cc / aiqu225 / etc),
+            // as distinct from the net-disk type ("夸克"/"度盘"/"...")
             // which is the right-hand tag. Show it on its own line so the
             // user can see "来源: 万站API" without confusing it with
             // "网盘: 夸克".
@@ -68,6 +81,8 @@ class SearchResultAdapter(
                 UrlKinds.isTorrentLike(result.url) -> "夸克离线下载"
                 else -> "下载资源"
             }
+            binding.resultDownloadBtn.isEnabled =
+                result.linkCheckStatus != LinkCheckStatus.BAD
 
             binding.resultDownloadBtn.setOnClickListener {
                 onDownloadClick(result)
@@ -82,6 +97,38 @@ class SearchResultAdapter(
             binding.root.setOnLongClickListener {
                 showContextMenu(binding.root.context, result)
                 true
+            }
+        }
+
+        private fun bindLinkStatus(status: LinkCheckStatus) {
+            val chip = binding.resultLinkStatus
+            val ctx = chip.context
+            when (status) {
+                LinkCheckStatus.UNCHECKED -> {
+                    chip.visibility = View.GONE
+                }
+                LinkCheckStatus.CHECKING -> {
+                    chip.visibility = View.VISIBLE
+                    chip.text = "检测中"
+                    chip.setTextColor(ContextCompat.getColor(ctx, R.color.colorOnSurfaceVariant))
+                }
+                LinkCheckStatus.OK -> {
+                    chip.visibility = View.GONE
+                }
+                LinkCheckStatus.BAD -> {
+                    chip.visibility = View.VISIBLE
+                    chip.text = "已失效"
+                    chip.setTextColor(ContextCompat.getColor(ctx, R.color.status_error))
+                }
+                LinkCheckStatus.LOCKED -> {
+                    chip.visibility = View.VISIBLE
+                    chip.text = "需密码"
+                    chip.setTextColor(ContextCompat.getColor(ctx, R.color.status_pending))
+                }
+                LinkCheckStatus.UNSUPPORTED,
+                LinkCheckStatus.UNCERTAIN -> {
+                    chip.visibility = View.GONE
+                }
             }
         }
 

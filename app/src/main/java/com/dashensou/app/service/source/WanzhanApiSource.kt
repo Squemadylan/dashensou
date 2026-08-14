@@ -12,11 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 
 class WanzhanApiSource(
     private val apiKeys: List<String> = emptyList()
@@ -53,14 +51,6 @@ class WanzhanApiSource(
 
         private const val GLOBAL_MIN_INTERVAL_MS = 4000L
         private const val API_BUDGET_MS = 12_000L
-
-        private val apiClient: OkHttpClient by lazy {
-            HttpClient.client.newBuilder()
-                .readTimeout(10, TimeUnit.SECONDS)
-                .writeTimeout(10, TimeUnit.SECONDS)
-                .callTimeout(API_BUDGET_MS, TimeUnit.MILLISECONDS)
-                .build()
-        }
 
         @Volatile
         private var lastSuccessTimestamp: Long = 0L
@@ -183,7 +173,12 @@ class WanzhanApiSource(
         data class ParseError(val message: String, val cause: Throwable?) : AttemptResult()
     }
 
-    private fun doRequest(keyword: String, page: Int, category: ResourceCategory, apiKey: String?): AttemptResult {
+    private suspend fun doRequest(
+        keyword: String,
+        page: Int,
+        category: ResourceCategory,
+        apiKey: String?
+    ): AttemptResult {
         val urlBuilder = BASE_URL.toHttpUrl().newBuilder()
             .addQueryParameter("kw", keyword.trim())
             .addQueryParameter("page", page.toString())
@@ -194,23 +189,23 @@ class WanzhanApiSource(
 
         return try {
             val request = HttpClient.newGet(url)
-            // We can't route through HttpClient.getString here because
-            // we need HTTP status code for the 401/403/429 -> AuthError
-            // path (HttpClient swallows the code). So we keep the raw
-            // OkHttp call local to this one method.
-            apiClient.newCall(request).execute().use { response ->
-                Log.d(TAG, "response: code=${response.code} bodyLength=${response.body?.contentLength() ?: -1}")
+            // Use HttpClient.execute so SearchService withTimeout cancels the
+            // OkHttp Call. Keep the raw Response so we can map 401/403/429.
+            val response = HttpClient.execute(request, API_BUDGET_MS)
+                ?: return AttemptResult.NetworkError("网络异常")
+            response.use { resp ->
+                Log.d(TAG, "response: code=${resp.code} bodyLength=${resp.body?.contentLength() ?: -1}")
 
-                if (response.code == 429) {
+                if (resp.code == 429) {
                     return AttemptResult.AuthError("万站API请求过于频繁(限流),请稍后再试")
                 }
-                if (response.code == 401 || response.code == 403) {
-                    return AttemptResult.AuthError("万站API鉴权失败(HTTP ${response.code})")
+                if (resp.code == 401 || resp.code == 403) {
+                    return AttemptResult.AuthError("万站API鉴权失败(HTTP ${resp.code})")
                 }
-                if (!response.isSuccessful) {
-                    return AttemptResult.AuthError("HTTP ${response.code}")
+                if (!resp.isSuccessful) {
+                    return AttemptResult.AuthError("HTTP ${resp.code}")
                 }
-                val body = response.body?.string()
+                val body = resp.body?.string()
                     ?: return AttemptResult.ParseError("响应体为空", null)
 
                 val root = try {
@@ -284,6 +279,8 @@ class WanzhanApiSource(
                 Log.d(TAG, "parsed: count=${results.size} (from types: ${merged.length()})")
                 AttemptResult.Success(results)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: IOException) {
             AttemptResult.NetworkError("网络异常: ${e.message ?: "未知"}")
         } catch (e: Exception) {

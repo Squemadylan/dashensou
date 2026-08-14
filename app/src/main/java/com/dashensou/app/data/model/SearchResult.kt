@@ -1,5 +1,7 @@
 package com.dashensou.app.data.model
 
+import com.dashensou.app.service.linkcheck.LinkCheckStatus
+
 enum class ResourceCategory {
     ALL,
     EBOOK,
@@ -35,7 +37,7 @@ data class SearchResult(
     val sourceName: String = "",
     /**
      * Stable identifier of the [com.dashensou.app.service.source.SearchSource]
-     * that produced this result (e.g. "pansou_252", "panclub_quark"). This is
+     * that produced this result (e.g. "pansou_252", "aiqu225"). This is
      * a machine-readable key — UI must keep using [sourceName] for display.
      *
      * Internal dispatch (download routing, scoring, logging) keys off this id
@@ -46,5 +48,7 @@ data class SearchResult(
     val fileType: String? = null,
     val isValid: Boolean = true,
     val requiresWebView: Boolean = false,
-    val extractionCode: String? = null
+    val extractionCode: String? = null,
+    /** Share-link probe result; updated asynchronously after search. */
+    val linkCheckStatus: LinkCheckStatus = LinkCheckStatus.UNCHECKED
 )

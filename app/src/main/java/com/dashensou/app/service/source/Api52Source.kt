@@ -87,12 +87,8 @@ class Api52Source(
         val request = HttpClient.newGet(url).newBuilder()
             .header("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
             .build()
-        val response = try {
-            HttpClient.client.newCall(request).execute()
-        } catch (e: Exception) {
-            Log.e(TAG, "request failed: ${e.message}", e)
-            return@withContext SearchOutcome.Failure.network("网络异常: ${e.message ?: "未知"}", e)
-        }
+        val response = HttpClient.execute(request)
+            ?: return@withContext SearchOutcome.Failure.network("网络异常")
         response.use { resp ->
             val code_http = resp.code
             val body = resp.body?.string()
@@ -199,7 +195,8 @@ class Api52Source(
                 .build()
                 .toString()
             Log.i(TAG, "fetchShareUrl: $url")
-            val response = HttpClient.client.newCall(HttpClient.newGet(url)).execute()
+            val response = HttpClient.execute(HttpClient.newGet(url))
+                ?: return@withContext null
             response.use { resp ->
                 val body = resp.body?.string() ?: return@withContext null
                 val root = Json.parseObject(body)
@@ -216,6 +213,8 @@ class Api52Source(
                     dataStr
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchShareUrl failed", e)
             null

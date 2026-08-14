@@ -10,6 +10,8 @@ import android.content.Context
 
 import android.content.Intent
 
+import android.content.res.Configuration
+
 import android.net.Uri
 
 import android.os.Bundle
@@ -25,6 +27,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.CompoundButton
 
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 
 import android.widget.TextView
 
@@ -39,6 +42,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 
 import androidx.core.content.ContextCompat
+
+import androidx.core.view.WindowCompat
 
 import androidx.lifecycle.Lifecycle
 
@@ -63,12 +68,9 @@ import com.dashensou.app.databinding.ActivityMainBinding
 import com.dashensou.app.service.DownloadManager
 
 import com.dashensou.app.service.source.AiQuSource
+import com.dashensou.app.service.source.HaiSouSource
 
 import com.dashensou.app.service.source.FailureKind
-
-import com.dashensou.app.service.source.PanClubSearchBase
-
-import com.dashensou.app.service.source.PanClubShare
 
 import com.dashensou.app.service.source.PansouCcSource
 
@@ -81,16 +83,20 @@ import com.dashensou.app.ui.search.SearchViewModel
 import com.dashensou.app.util.DiskLabels
 
 import com.dashensou.app.util.PansouGotoResolver
+import com.dashensou.app.util.SourceHealthChecker
 
 import com.dashensou.app.util.AppUpdateManager
+
 import com.dashensou.app.util.SourcePrefs
 
 import com.dashensou.app.util.UrlKinds
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 
@@ -130,8 +136,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pansouSource: PansouCcSource
 
     private lateinit var aiquSource: AiQuSource
-
-    private val panclubSources: MutableList<PanClubSearchBase> = mutableListOf()
+    private lateinit var haisouSource: HaiSouSource
 
     private lateinit var searchAdapter: SearchResultAdapter
 
@@ -163,13 +168,42 @@ class MainActivity : AppCompatActivity() {
 
     // bound to a stale activity writing to a deleted view binding.
 
+    private var healthChecker: SourceHealthChecker? = null
+
+    private val healthLatencyMap = mutableMapOf<String, SourceHealthChecker.Result>()
+
     private var inFlightDownloadJob: Job? = null
+
+    private var startupUpdateCheckDone = false
+
+    private var appliedNightMask = Configuration.UI_MODE_NIGHT_UNDEFINED
+
+    private var suppressThemeSwitcher = false
+
+    private var suppressCategoryTabCallback = false
+
+
+
+    private data class ThemeUiSnapshot(
+
+        val currentTab: Int,
+
+        val bottomNavId: Int,
+
+        val searchKeyword: String,
+
+        val categoryTabIndex: Int
+
+    )
 
 
 
     companion object {
 
         private const val TAG = "MainActivity"
+
+        /** adb / deep-link query: `--es q 关键词` */
+        const val EXTRA_QUERY = "q"
 
         private const val TAB_SEARCH = 0
 
@@ -215,32 +249,62 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    private var startupUpdateCheckDone = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
 
         // Apply the persisted theme mode BEFORE super.onCreate() so
         // that the first frame uses the correct day / night color
-        // tokens (res/values-night/colors.xml vs. res/values/colors.xml).
-        // This also ensures a subsequent theme toggle triggers a proper
-        // Activity recreate (because uiMode is NOT in configChanges),
-        // meaning the view hierarchy is rebuilt with the correct theme.
+        // tokens. uiMode is in configChanges, so toggling theme does
+        // NOT recreate this Activity — we re-inflate the content view
+        // so every ?attr/ theme color is resolved against the new mode.
 
         applyStoredThemeMode()
 
         super.onCreate(savedInstanceState)
+
+        appliedNightMask = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+        inflateAndWireContent(savedInstanceState, restoreSnapshot = null)
+
+        observeViewModels()
+
+        setupThemeSwitcher()
+
+        // adb: am start -n com.dashensou.app/.ui.MainActivity --es q 关键词
+        intent?.getStringExtra(EXTRA_QUERY)?.trim()?.takeIf { it.isNotEmpty() }?.let { q ->
+            binding.searchInput.setText(q)
+            searchViewModel.search(q, page = 1)
+        }
+
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!startupUpdateCheckDone) {
+            startupUpdateCheckDone = true
+            AppUpdateManager.runStartupCheck(this)
+        }
+    }
+
+
+
+    /**
+     * Inflate [activity_main] and wire listeners. Called on cold start and
+     * after an in-place theme switch. ViewModel collectors in
+     * [observeViewModels] are started only once from [onCreate].
+     */
+    private fun inflateAndWireContent(
+
+        savedInstanceState: Bundle?,
+
+        restoreSnapshot: ThemeUiSnapshot?
+
+    ) {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
 
         setContentView(binding.root)
 
 
-
-        // Share one SearchService instance between this Activity and the
-
-        // SearchViewModel so the source list (and the two sources we
-
-        // need to introspect here) is consistent.
 
         val searchService = searchViewModel.searchService
 
@@ -252,27 +316,10 @@ class MainActivity : AppCompatActivity() {
 
             ?: AiQuSource()
 
-        // Cache the three pan.club mirrors so handleDownload() can route
-
-        // a tapped card to the correct disk-specific source to resolve
-
-        // the real share URL. SearchService owns the only instances we
-
-        // trust, so we pull them off the shared list.
-
-        panclubSources.clear()
-
-        searchService.sources.filterIsInstance<PanClubSearchBase>().forEach { panclubSources.add(it) }
+        haisouSource = searchService.sources.firstOrNull { it is HaiSouSource } as? HaiSouSource
+            ?: HaiSouSource()
 
 
-
-        // Apply persisted source on/off flags. The mine tab also calls
-
-        // this when re-rendered after a toggle, but doing it here
-
-        // ensures the very first search (which happens on a tab switch
-
-        // or refresh) honours the user's saved choice.
 
         SourcePrefs.applyTo(this, searchService.sources)
 
@@ -284,7 +331,7 @@ class MainActivity : AppCompatActivity() {
 
         setupCategoryTabs()
 
-        setupBottomNav(savedInstanceState)
+        setupBottomNav(savedInstanceState, preserveTab = restoreSnapshot != null)
 
         setupSearchAdapter()
 
@@ -292,17 +339,76 @@ class MainActivity : AppCompatActivity() {
 
         setupMinePage()
 
-        observeViewModels()
 
-        setupThemeSwitcher()
+
+        if (restoreSnapshot != null) {
+
+            restoreThemeUiSnapshot(restoreSnapshot)
+
+            renderSearchState(searchViewModel.state.value)
+
+            renderDownloads(downloadViewModel.records.value)
+
+        }
+
+
+
+        applySystemBarAppearance()
+
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (!startupUpdateCheckDone) {
-            startupUpdateCheckDone = true
-            AppUpdateManager.runStartupCheck(this)
-        }
+
+
+    private fun captureThemeUiSnapshot() = ThemeUiSnapshot(
+
+        currentTab = currentTab,
+
+        bottomNavId = binding.bottomNav.selectedItemId,
+
+        searchKeyword = binding.searchInput.text?.toString().orEmpty(),
+
+        categoryTabIndex = binding.categoryTabs.selectedTabPosition.coerceAtLeast(0)
+
+    )
+
+
+
+    private fun restoreThemeUiSnapshot(snapshot: ThemeUiSnapshot) {
+
+        binding.searchInput.setText(snapshot.searchKeyword)
+
+        suppressCategoryTabCallback = true
+
+        binding.categoryTabs.getTabAt(snapshot.categoryTabIndex)?.select()
+
+        suppressCategoryTabCallback = false
+
+        binding.bottomNav.selectedItemId = snapshot.bottomNavId
+
+        switchToTab(snapshot.currentTab)
+
+    }
+
+
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+
+        super.onConfigurationChanged(newConfig)
+
+        val newMask = newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+        if (newMask == appliedNightMask) return
+
+        appliedNightMask = newMask
+
+        delegate.applyDayNight()
+
+        val snapshot = captureThemeUiSnapshot()
+
+        inflateAndWireContent(savedInstanceState = null, restoreSnapshot = snapshot)
+
+        setupThemeSwitcher()
+
     }
 
 
@@ -389,6 +495,8 @@ class MainActivity : AppCompatActivity() {
 
             override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
 
+                if (suppressCategoryTabCallback) return
+
                 // 3 tabs in the layout (全部 / 电子书 / 网盘). The
 
                 // visibleResults filter in SearchUiState handles the
@@ -441,7 +549,7 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    private fun setupBottomNav(savedInstanceState: Bundle?) {
+    private fun setupBottomNav(savedInstanceState: Bundle?, preserveTab: Boolean = false) {
 
         binding.bottomNav.setOnItemSelectedListener { item ->
 
@@ -471,7 +579,7 @@ class MainActivity : AppCompatActivity() {
 
         // user stays on whichever tab they left the app on.
 
-        if (savedInstanceState == null &&
+        if (!preserveTab && savedInstanceState == null &&
 
             binding.bottomNav.selectedItemId != R.id.nav_search) {
 
@@ -595,6 +703,8 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+        renderMineSources()
+
         binding.mineCheckUpdate.setOnClickListener {
             AppUpdateManager.runManualCheck(this)
         }
@@ -603,7 +713,9 @@ class MainActivity : AppCompatActivity() {
             AppUpdateManager.openManualUpdatePage(this)
         }
 
-        renderMineSources()
+        binding.mineHealthCheckButton.setOnClickListener {
+            startHealthCheck()
+        }
 
     }
 
@@ -619,6 +731,8 @@ class MainActivity : AppCompatActivity() {
 
         val gap = (8 * density).toInt()
 
+        healthLatencyMap.clear()
+
         val sources = searchViewModel.searchService.sources
 
         for ((index, source) in sources.withIndex()) {
@@ -628,6 +742,8 @@ class MainActivity : AppCompatActivity() {
             val name = row.findViewById<TextView>(R.id.source_name)
 
             val status = row.findViewById<TextView>(R.id.source_status)
+
+            val latency = row.findViewById<TextView>(R.id.source_latency)
 
             val switch = row.findViewById<CompoundButton>(R.id.source_switch)
 
@@ -647,6 +763,8 @@ class MainActivity : AppCompatActivity() {
 
             if (source.enabled != persisted) source.enabled = persisted
 
+            switch.setOnCheckedChangeListener(null)
+
             switch.isChecked = persisted
 
             switch.setOnCheckedChangeListener { _, isChecked ->
@@ -656,6 +774,14 @@ class MainActivity : AppCompatActivity() {
                 SourcePrefs.setEnabled(this, source, isChecked)
 
                 applySourceStatus(status, isChecked)
+
+            }
+
+            // Apply cached health result if available
+
+            healthLatencyMap[source.id]?.let { result ->
+
+                applyHealthResultToViews(latency, status, result)
 
             }
 
@@ -692,6 +818,134 @@ class MainActivity : AppCompatActivity() {
             )
 
         )
+
+    }
+
+
+
+    private fun startHealthCheck() {
+
+        healthChecker?.shutdown()
+
+        healthChecker = SourceHealthChecker(searchViewModel.searchService.sources)
+
+        binding.mineHealthCheckButton.isEnabled = false
+
+        binding.mineHealthCheckButton.text = getString(R.string.health_check_running)
+
+        lifecycleScope.launch {
+
+            healthChecker?.start(
+
+                onResult = { result ->
+
+                    healthLatencyMap[result.sourceId] = result
+
+                    runOnUiThread {
+
+                        refreshHealthViewForSource(result.sourceId, result)
+
+                    }
+
+                },
+
+                onDone = {
+
+                    runOnUiThread {
+
+                        binding.mineHealthCheckButton.isEnabled = true
+
+                        binding.mineHealthCheckButton.text = getString(R.string.health_check_button)
+
+                    }
+
+                }
+
+            )
+
+        }
+
+    }
+
+
+
+    private fun refreshHealthViewForSource(sourceId: String, result: SourceHealthChecker.Result) {
+
+        val container = binding.mineSourcesContainer
+
+        val sources = searchViewModel.searchService.sources
+
+        val index = sources.indexOfFirst { it.id == sourceId }
+
+        if (index < 0 || index >= container.childCount) return
+
+
+
+        val row = container.getChildAt(index)
+
+        val status = row.findViewById<TextView>(R.id.source_status)
+
+        val latency = row.findViewById<TextView>(R.id.source_latency)
+
+
+
+        applyHealthResultToViews(latency, status, result)
+
+    }
+
+
+
+    private fun applyHealthResultToViews(
+
+        latencyView: TextView,
+
+        statusView: TextView,
+
+        result: SourceHealthChecker.Result
+
+    ) {
+
+        when (result.status) {
+
+            SourceHealthChecker.Status.OK -> {
+
+                latencyView.text = getString(R.string.health_latency_ms, result.latencyMs)
+
+                latencyView.setTextColor(ContextCompat.getColor(this, R.color.status_success))
+
+                latencyView.visibility = View.VISIBLE
+
+                statusView.text = getString(R.string.source_enabled)
+
+                statusView.setTextColor(ContextCompat.getColor(this, R.color.status_success))
+
+            }
+
+            SourceHealthChecker.Status.FAIL -> {
+
+                latencyView.text = getString(R.string.health_latency_ms, result.latencyMs)
+
+                latencyView.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+
+                latencyView.visibility = View.VISIBLE
+
+                statusView.text = result.message.ifEmpty { getString(R.string.source_fail) }
+
+                statusView.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+
+            }
+
+            SourceHealthChecker.Status.SKIPPED -> {
+
+                latencyView.visibility = View.GONE
+
+                statusView.text = getString(R.string.source_disabled)
+
+                statusView.setTextColor(ContextCompat.getColor(this, R.color.text_hint))
+
+            }
+
+        }
 
     }
 
@@ -811,9 +1065,9 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    private fun renderSearchState(state: com.dashensou.app.ui.search.SearchUiState) {
+    private fun renderSearchState(state: com.dashensou.app.ui.search.SearchViewModel.SearchUiState) {
 
-        binding.refreshLayout.isRefreshing = state.loading
+        binding.refreshLayout.isRefreshing = state.isLoading
 
         // P0#ux: block pull-to-refresh on the empty/landing state. A
 
@@ -831,9 +1085,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.refreshLayout.isEnabled = state.keyword.isNotBlank()
 
-        searchAdapter.submitList(state.visibleResults)
+        searchAdapter.submitList(state.results)
 
-        val isEmpty = state.visibleResults.isEmpty() && state.keyword.isEmpty()
+        val isEmpty = state.results.isEmpty() && state.keyword.isEmpty()
 
         binding.searchEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
 
@@ -936,7 +1190,9 @@ class MainActivity : AppCompatActivity() {
 
             FailureKind.TIMEOUT -> Triple(
 
-                "所有源都没在 2.5 秒内响应。可能是网络抖动,稍后再试。",
+                outcome.message.ifBlank {
+                    "搜索超时。可能是网络较慢或源站无响应,稍后再试。"
+                },
 
                 "重试"
 
@@ -1016,10 +1272,6 @@ class MainActivity : AppCompatActivity() {
 
      *   - pansou.cc (含 /info/ 中转 URL): resolve /goto/ → share URL
 
-     *   - pan.club 三个源:   resolve detail page → 真实 pan.quark.cn /
-
-     *                        pan.baidu.com / www.alipan.com URL
-
      *   - DIRECT_URL:        enqueue a direct download (we own the bytes)
 
      *   - 其它 (wanzhan / 52api 等): result.url 是分享 URL,直接 copy+open
@@ -1052,23 +1304,16 @@ class MainActivity : AppCompatActivity() {
 
             result.sourceId == aiquSource.id -> fetchDirectDownloadAiqu(result)
 
+            // 1b) haisou — 详情页被"邀请码"墙挡住,抓详情页拿真实网盘链接+码
+            result.sourceId == haisouSource.id -> fetchAndOpenHaiSou(result)
+
             // 2) pansou.cc (含 /info/ 中转 URL) — 走 fetchDetail 拿 goto 链接
 
             result.sourceId == pansouSource.id
 
                 || result.url.contains("/info/") -> fetchAndSharePansouCc(result)
 
-            // 3) pan.club 三源 — 走各自 source 的 resolveShareUrl
-
-            panclubSources.any { it.id == result.sourceId } -> {
-
-                val src = panclubSources.first { it.id == result.sourceId }
-
-                fetchAndSharePanclub(result, src)
-
-            }
-
-            // 4) 磁力 / ed2k — 夸克浏览器可打开并离线下载
+            // 3) 磁力 / ed2k — 夸克浏览器可打开并离线下载
 
             UrlKinds.isTorrentLike(result.url) -> openTorrentInQuark(result)
 
@@ -1170,28 +1415,6 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-
-    private fun fetchAndSharePanclub(result: SearchResult, source: PanClubSearchBase) {
-
-        launchDownloadJob("获取网盘链接失败，请稍后重试") {
-
-            val share = withTimeoutOrNull(8_000L) {
-
-                source.resolveShareUrl(result.url)
-
-            }
-
-            if (share == null || share.shareUrl.isBlank()) {
-
-                return@launchDownloadJob DownloadOutcome.Failure("获取网盘链接失败，请稍后重试")
-
-            }
-
-            DownloadOutcome.Success { shareAndOpenNetDiskApp(result, share.shareUrl, share.password) }
-
-        }
-
-    }
 
 
 
@@ -1316,6 +1539,49 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 Toast.makeText(this@MainActivity, "已加入下载（Download/Book）", Toast.LENGTH_SHORT).show()
+
+            }
+
+        }
+
+    }
+
+
+
+    /**
+
+     * haisou: the result's `sourceUrl` is the gated detail page
+
+     * `haisou.cc/s/{hsid}`. Scrape it for the real net-disk share URL and the
+
+     * access code ("邀请码"), then open that + copy the code. Falls back to
+
+     * the best-effort `result.url` (built from share_code) if scraping fails.
+
+     */
+
+    private fun fetchAndOpenHaiSou(result: SearchResult) {
+
+        launchDownloadJob("获取分享链接超时，请稍后重试") {
+
+            val hsid = result.sourceUrl.substringAfter("/s/")
+                .substringBefore("/").substringBefore("?")
+
+            val resolved = if (hsid.isNotBlank()) {
+
+                withTimeoutOrNull(10_000L) { haisouSource.resolveRealShare(hsid) }
+
+            } else null
+
+            val realUrl = resolved?.url ?: result.url
+
+            val pwd = resolved?.pwd ?: result.extractionCode
+
+            Log.i(TAG, "fetchAndOpenHaiSou: hsid='$hsid' -> $realUrl pwd=${pwd ?: "(none)"}")
+
+            DownloadOutcome.Success {
+
+                shareAndOpenNetDiskApp(result, realUrl, pwd)
 
             }
 
@@ -1518,8 +1784,59 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun applyStoredThemeMode() {
+
         val mode = readThemeModePref()
+
+        if (AppCompatDelegate.getDefaultNightMode() != mode) {
+
+            AppCompatDelegate.setDefaultNightMode(mode)
+
+        }
+
+    }
+
+
+
+    private fun applyThemeMode(mode: Int, persist: Boolean = true) {
+
+        if (persist) writeThemeModePref(mode)
+
+        val snapshot = captureThemeUiSnapshot()
+
         AppCompatDelegate.setDefaultNightMode(mode)
+
+        delegate.localNightMode = mode
+
+        delegate.applyDayNight()
+
+        appliedNightMask = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+        inflateAndWireContent(savedInstanceState = null, restoreSnapshot = snapshot)
+
+        setupThemeSwitcher()
+
+    }
+
+
+
+    private fun applySystemBarAppearance() {
+
+        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+        val lightBars = nightMode != Configuration.UI_MODE_NIGHT_YES
+
+        window.statusBarColor = ContextCompat.getColor(this, R.color.colorSurface)
+
+        window.navigationBarColor = ContextCompat.getColor(this, R.color.colorSurface)
+
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+
+            isAppearanceLightStatusBars = lightBars
+
+            isAppearanceLightNavigationBars = lightBars
+
+        }
+
     }
 
 
@@ -1540,11 +1857,17 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+        suppressThemeSwitcher = true
+
         group.check(initialButton)
+
+        suppressThemeSwitcher = false
+
+        group.clearOnButtonCheckedListeners()
 
         group.addOnButtonCheckedListener { _, checkedId, isChecked ->
 
-            if (!isChecked) return@addOnButtonCheckedListener
+            if (suppressThemeSwitcher || !isChecked) return@addOnButtonCheckedListener
 
             val mode = when (checkedId) {
 
@@ -1556,9 +1879,7 @@ class MainActivity : AppCompatActivity() {
 
             }
 
-            writeThemeModePref(mode)
-
-            AppCompatDelegate.setDefaultNightMode(mode)
+            applyThemeMode(mode)
 
         }
 

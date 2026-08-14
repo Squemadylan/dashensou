@@ -65,10 +65,9 @@ interface SearchSource {
     /**
      * Optional per-source override of the single-source timeout budget
      * (defaults to [SearchService.SOURCE_TIMEOUT_MS]). A few HTML-rendered
-     * aggregators — currently the three pan.club mirrors — need more
-     * headroom than JSON endpoints because they pay a follow-up detail
-     * fetch per card. The override has to be >0; the SearchService
-     * wrapper still applies it as a hard ceiling.
+     * aggregators need more headroom than JSON endpoints because they
+     * pay a follow-up detail fetch per card. The override has to be >0;
+     * the SearchService wrapper still applies it as a hard ceiling.
      */
     val perSourceTimeoutMs: Long get() = 0L
 

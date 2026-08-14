@@ -34,24 +34,15 @@ object SourcePrefs {
         val sp = prefs(ctx)
         val key = KEY_PREFIX + source.id
         if (!sp.contains(key)) {
-            // First read for this id: seed it with the source's own
-            // default so the UI and the next read agree.
             sp.edit().putBoolean(key, source.enabled).apply()
         }
         return sp.getBoolean(key, source.enabled)
     }
 
     fun setEnabled(ctx: Context, source: SearchSource, enabled: Boolean) {
-        prefs(ctx).edit().putBoolean(KEY_PREFIX + source.id, enabled).apply()
+        prefs(ctx).edit().putBoolean(KEY_PREFIX + source.id, enabled).commit()
     }
 
-    /**
-     * Apply persisted flags to a live list of sources. Mutates each
-     * source's `enabled` var so subsequent `SearchService.search()`
-     * calls see the user's choice.
-     *
-     * Sources whose id has no pref entry are seeded on first call.
-     */
     fun applyTo(ctx: Context, sources: List<SearchSource>) {
         for (s in sources) {
             val v = isEnabled(ctx, s)
@@ -59,8 +50,7 @@ object SourcePrefs {
         }
     }
 
-    /** Wipe all per-source flags and revert to in-code defaults. */
     fun reset(ctx: Context) {
-        prefs(ctx).edit().clear().apply()
+        prefs(ctx).edit().clear().commit()
     }
 }

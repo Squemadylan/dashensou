@@ -1,5 +1,6 @@
 package com.dashensou.app.service
 
+import android.content.Context
 import android.util.Log
 import com.dashensou.app.data.model.NetDiskType
 import com.dashensou.app.data.model.ResourceCategory
@@ -7,47 +8,53 @@ import com.dashensou.app.data.model.SearchResult
 import com.dashensou.app.service.source.AiQuSource
 import com.dashensou.app.service.source.Api52Source
 import com.dashensou.app.service.source.FailureKind
+import com.dashensou.app.service.source.DuanJuSource
 import com.dashensou.app.service.source.GutendexSource
+import com.dashensou.app.service.source.HaiSouSource
+import com.dashensou.app.service.source.KksoSource
 import com.dashensou.app.service.source.OpenLibrarySource
-import com.dashensou.app.service.source.PanClubAlipanSource
-import com.dashensou.app.service.source.PanClubBaiduSource
-import com.dashensou.app.service.source.PanClubQuarkSource
 import com.dashensou.app.service.source.PanSouSource
 import com.dashensou.app.service.source.PansouCcSource
+import com.dashensou.app.service.source.PansouDeSource
 import com.dashensou.app.service.source.SearchOutcome
 import com.dashensou.app.service.source.SearchSource
+import com.dashensou.app.service.source.TelegramChannelSource
 import com.dashensou.app.service.source.WanzhanApiSource
 import com.dashensou.app.service.source.XiaoShuoApiSource
+import com.dashensou.app.service.source.web.PansouCcWebSource
+import com.dashensou.app.util.SourceCircuitBreaker
+import com.dashensou.app.util.SourcePrefs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
 import java.util.Locale
+import kotlin.coroutines.coroutineContext
 
 class SearchService(
+    context: Context,
     private val wanzhanApiKeys: List<String> = emptyList(),
-    val sources: List<SearchSource> = defaultSources(wanzhanApiKeys)
+    private val sourcesList: List<SearchSource> = defaultSources(wanzhanApiKeys)
 ) {
+    val sources: List<SearchSource> get() = sourcesList
+    val circuitBreaker = SourceCircuitBreaker()
 
     companion object {
         private const val TAG = "SearchService"
 
         private const val SOURCE_TIMEOUT_MS = 2500L
-        // P0#perf: hard cap on results per source. A misbehaving or
-        // hot-keyword source returning thousands of items used to cost
-        // us (a) a dedup pass on the whole list, (b) a sort over the
-        // whole list, (c) a long RecyclerView bind. 200 is comfortably
-        // above what the user can scan in a single screen and stays
-        // snappy under fan-out.
         private const val MAX_RESULTS_PER_SOURCE = 200
         private const val SOURCE_WEIGHT_WANZHAN = 100
-        // 原本 pan.club 三源（夸克/百度/阿里）覆盖了三家主流网盘，
-        // 现在 pan.club 域名无法解析，改由 PanSouSource (so.252035.xyz)
-        // 和 PansouCcSource (pansou.cc) 承担对应职责，因此权重上调。
         private const val SOURCE_WEIGHT_PANSOU252 = 95
         private const val SOURCE_WEIGHT_API52 = 90
         private const val SOURCE_WEIGHT_PANSOU = 85
+        private const val SOURCE_WEIGHT_PANSOU_DE = 86
+        private const val SOURCE_WEIGHT_KKSO = 84
+        private const val SOURCE_WEIGHT_TELEGRAM = 88
         private const val SOURCE_WEIGHT_XIAOSHUO = 60
         private const val SOURCE_WEIGHT_AIQU = 55
         private const val SOURCE_WEIGHT_OPENLIBRARY = 40
@@ -64,11 +71,6 @@ class SearchService(
         private const val FRESHNESS_DAYS_FRESH = 180
         private const val FRESHNESS_DAYS_OK = 730
 
-        // P0#relevance: weights for the new relevance formula. The miss
-        // penalty magnitude is intentionally larger than the max base
-        // score (source + netDisk + freshness = 100 + 30 + 5 = 135) so
-        // a title that does not contain the keyword at all can never
-        // be promoted by source/disk bonuses alone.
         private const val MISS_PENALTY = -200.0
         private const val HIT_FULL_BONUS = 150.0
         private const val HIT_TOKEN_BONUS = 35.0
@@ -78,41 +80,49 @@ class SearchService(
 
         fun defaultSources(wanzhanApiKeys: List<String> = emptyList()): List<SearchSource> = listOf(
             WanzhanApiSource(apiKeys = wanzhanApiKeys).apply { enabled = true },
-            // so.252035.xyz /api/search 返回 baidu、aliyun、quark、xunlei、123pan 等
-            // 全部主流网盘的 JSON 结果，承担之前由 pan.club 三源覆盖的搜索。
             PanSouSource().apply { enabled = true },
-            // pansou.cc 作为备用，列表页可抓到百夸阿三家网盘。
-            PansouCcSource().apply { enabled = true },
-            // pan.club 三源已失效（域名无法解析，DNS lookup 失败），
-            // 从 active 列表中移除以避免搜索超时与失败提示。
-            // 保留类定义以便 pan.club 恢复后可快速重新启用。
-            XiaoShuoApiSource().apply { enabled = true },
+            // WebView variant — primary path for HTML-anti-scraping sites
+            // (Cloudflare challenge on pansou.cc). It shares one WebView via
+            // AppWebView, serialized by an internal Mutex. The OkHttp
+            // fallback stays registered but defaults to enabled=false so
+            // users can opt-in via the "我的" source-toggle page when the
+            // WebView path misbehaves (stale System WebView, hardware quirks).
+            // NOTE: aiqu225.com (GBK) and haisou.cc (v2 JSON API) both use
+            // plain OkHttp sources (AiQuSource / HaiSouSource) — no WebView.
+            PansouCcWebSource().apply { enabled = true },
+            // OkHttp variants. aiqu225 (GBK) and haisou (JSON API) are the
+            // primary paths for their sites, so they default to on; the
+            // pansou.cc OkHttp fallback defaults to off.
+            PansouCcSource().apply { enabled = false },
+            HaiSouSource().apply { enabled = true },
+            // awesome-zhuiju-free cloud_search candidates (kkso / pansou.de).
+            // zhuiju.us / gugeso.com expose only encrypted SSE paths — skipped.
+            KksoSource().apply { enabled = true },
+            PansouDeSource().apply { enabled = true },
+            TelegramChannelSource().apply { enabled = true },
             AiQuSource().apply { enabled = true },
+            DuanJuSource().apply { enabled = true },
+            XiaoShuoApiSource().apply { enabled = true },
             Api52Source().apply { enabled = false },
             OpenLibrarySource().apply { enabled = false },
             GutendexSource().apply { enabled = false }
         )
 
-        /**
-         * Stable source weights. P0#ux: the weight is keyed off the
-         * SearchSource.id, never the displayName. Display names are
-         * user-facing strings and can be renamed (e.g. for
-         * localisation, or to obscure third-party brands from the
-         * UI) without affecting relevance scoring.
-         */
         private fun sourceWeight(id: String): Int = when (id) {
             "wanzhan" -> SOURCE_WEIGHT_WANZHAN
             "pansou_252" -> SOURCE_WEIGHT_PANSOU252
             "pansou_cc" -> SOURCE_WEIGHT_PANSOU
+            "pansou_cc-web" -> SOURCE_WEIGHT_PANSOU
+            "haisou" -> SOURCE_WEIGHT_PANSOU
+            "pansou_de" -> SOURCE_WEIGHT_PANSOU_DE
+            "kkso" -> SOURCE_WEIGHT_KKSO
+            "telegram" -> SOURCE_WEIGHT_TELEGRAM
+            "duanju" -> SOURCE_WEIGHT_PANSOU252
             "api52" -> SOURCE_WEIGHT_API52
             "xiaoshuo" -> SOURCE_WEIGHT_XIAOSHUO
             "aiqu225" -> SOURCE_WEIGHT_AIQU
             "openlibrary" -> SOURCE_WEIGHT_OPENLIBRARY
             "gutendex" -> SOURCE_WEIGHT_GUTENDEX
-            // 保留兜底(占位，因 pan.club 原三源目前已失效)
-            "panclub_quark",
-            "panclub_baidu",
-            "panclub_alipan" -> 0
             else -> 10
         }
 
@@ -127,6 +137,15 @@ class SearchService(
         }
     }
 
+    init {
+        // CRITICAL: load source enabled states from SharedPreferences
+        // IMMEDIATELY on creation. SearchService is now a process-wide
+        // singleton held by the Application class, so theme-switch
+        // Activity recreation never touches it — the sources list and
+        // their enabled flags survive any config change.
+        SourcePrefs.applyTo(context.applicationContext, sourcesList)
+    }
+
     suspend fun search(
         keyword: String,
         page: Int = 1,
@@ -136,8 +155,30 @@ class SearchService(
             return@withContext SearchOutcome.Success(emptyList())
         }
 
-        val activeSources = sources.filter { it.enabled }
-        Log.i(TAG, "search '$keyword' page=$page category=$category activeSources=${activeSources.size}/${sources.size}")
+        val enabledSources = sources.filter { it.enabled }
+        val skipped = enabledSources.filter { !circuitBreaker.isHealthy(it.id) }
+        val activeSources = enabledSources.filter { circuitBreaker.isHealthy(it.id) }
+        if (skipped.isNotEmpty()) {
+            Log.i(
+                TAG,
+                "circuit skip: ${skipped.joinToString { it.id }}"
+            )
+        }
+        Log.i(
+            TAG,
+            "search '$keyword' page=$page category=$category " +
+                "active=${activeSources.size}/${sources.size} skipped=${skipped.size}"
+        )
+
+        if (activeSources.isEmpty()) {
+            return@withContext if (skipped.isNotEmpty()) {
+                SearchOutcome.Failure.sourceDown(
+                    "数据源熔断冷却中,请稍后再试 (${skipped.size} 个源)"
+                )
+            } else {
+                SearchOutcome.Success(emptyList())
+            }
+        }
 
         val perSource = coroutineScope {
             activeSources.map { source ->
@@ -145,38 +186,43 @@ class SearchService(
                     val name = source.displayName
                     val start = System.currentTimeMillis()
                     Log.i(TAG, "[START] source '$name' begin")
-                    // For the "全部" (ALL) tab we deliberately pass ALL
-                    // through; the category filter in every source's
-                    // matchesCategory(...) already short-circuits to "true"
-                    // when the category is ALL, so we are not asking any
-                    // source to drop results. The front-end filterByCategory
-                    // also early-returns for ALL. Net effect: ALL tab shows
-                    // the unfiltered union of every source.
                     val outcome = try {
-                        // A few HTML-rendered aggregators (pan.club mirrors)
-                        // declare their own per-source budget. The default
-                        // SOURCE_TIMEOUT_MS is right for JSON endpoints.
-                        val budget = if (source.perSourceTimeoutMs > 0L)
+                        val budget = if (source.perSourceTimeoutMs > 0L) {
                             source.perSourceTimeoutMs
-                        else
+                        } else {
                             SOURCE_TIMEOUT_MS
-                        withTimeoutOrNull(budget) {
-                            source.search(keyword, page, category)
-                        } ?: run {
-                            val cost = System.currentTimeMillis() - start
-                            Log.w(TAG, "[TIMEOUT] source '$name' cost=${cost}ms (limit=${budget}ms)")
-                            // P1#16: keep the kind on the timeout path so
-                            // the UI can show a "稍后重试 / 换关键词" hint
-                            // instead of pretending the source returned
-                            // an empty success.
-                            SearchOutcome.Failure.timeout("搜索超时 (>${budget}ms)")
                         }
+                        // withTimeout cancels the child coroutine on expiry.
+                        // Sources that use HttpClient.execute will abort the
+                        // OkHttp Call via invokeOnCancellation — true cancel,
+                        // not just discarding a late result.
+                        withTimeout(budget) {
+                            coroutineContext.ensureActive()
+                            source.search(keyword, page, category)
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        val cost = System.currentTimeMillis() - start
+                        Log.w(TAG, "[TIMEOUT] source '$name' cost=${cost}ms")
+                        SearchOutcome.Failure.timeout("搜索超时")
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         val cost = System.currentTimeMillis() - start
                         Log.e(TAG, "[CRASH] source '$name' cost=${cost}ms: ${e.message}", e)
                         SearchOutcome.Failure.parse("异常: ${e.message ?: "未知"}", e)
                     }
                     val cost = System.currentTimeMillis() - start
+                    when (outcome) {
+                        is SearchOutcome.Success ->
+                            circuitBreaker.recordSuccess(source.id, cost)
+                        is SearchOutcome.Failure -> when (outcome.kind) {
+                            FailureKind.TIMEOUT,
+                            FailureKind.NETWORK,
+                            FailureKind.SOURCE_DOWN ->
+                                circuitBreaker.recordFailure(source.id)
+                            else -> Unit
+                        }
+                    }
                     val count = (outcome as? SearchOutcome.Success)?.results?.size ?: 0
                     Log.i(TAG, "[DONE] source '$name' cost=${cost}ms results=$count")
                     name to outcome
@@ -191,7 +237,11 @@ class SearchService(
                 is SearchOutcome.Success -> {
                     if (outcome.results.isNotEmpty()) {
                         val capped = if (outcome.results.size > MAX_RESULTS_PER_SOURCE) {
-                            Log.w(TAG, "source '$name' returned ${outcome.results.size} > cap $MAX_RESULTS_PER_SOURCE, truncating")
+                            Log.w(
+                                TAG,
+                                "source '$name' returned ${outcome.results.size} > " +
+                                    "cap $MAX_RESULTS_PER_SOURCE, truncating"
+                            )
                             outcome.results.take(MAX_RESULTS_PER_SOURCE)
                         } else {
                             outcome.results
@@ -211,17 +261,15 @@ class SearchService(
 
         val deduped = dedupe(merged)
         val sorted = sortByScore(deduped, keyword)
-        Log.i(TAG, "merged=${merged.size} deduped=${deduped.size} sorted=${sorted.size} failures=${failures.size}")
+        Log.i(
+            TAG,
+            "merged=${merged.size} deduped=${deduped.size} " +
+                "sorted=${sorted.size} failures=${failures.size}"
+        )
 
         when {
             sorted.isNotEmpty() -> SearchOutcome.Success(sorted)
             failures.isNotEmpty() && merged.isEmpty() -> {
-                // P1#16: pick the most "telling" kind from the failed
-                // sources. NETWORK wins over SOURCE_DOWN (the user is
-                // more likely to fix the device than wait for an
-                // upstream), TIMEOUT/PARSE bubble up when nothing
-                // higher-priority is present, EMPTY is the all-clean
-                // case. Unknown is the catch-all.
                 val pickedKind = pickFailureKind(perSource)
                 val hint = kindHint(pickedKind, failures.size, failures)
                 SearchOutcome.Failure(hint, pickedKind)
@@ -240,8 +288,6 @@ class SearchService(
             ?: FailureKind.UNKNOWN
 
     private fun priority(kind: FailureKind): Int = when (kind) {
-        // User-actionable first: if anything is down at the network
-        // level, that dominates whatever the upstream sites are doing.
         FailureKind.NETWORK -> 5
         FailureKind.TIMEOUT -> 4
         FailureKind.SOURCE_DOWN -> 3
@@ -262,12 +308,13 @@ class SearchService(
             return "部分数据源请求过于频繁(限流),请稍后再试 (${failedSourceCount} 个源异常)"
         }
         return when (kind) {
-        FailureKind.NETWORK -> "网络好像不通,检查 WiFi / 数据连接后再试 (${failedSourceCount} 个源异常)"
-        FailureKind.TIMEOUT -> "搜索超时,可换个关键词再试 (${failedSourceCount} 个源异常)"
-        FailureKind.SOURCE_DOWN -> "部分源暂时不可用,稍后重试 (${failedSourceCount} 个源异常)"
-        FailureKind.PARSE -> "搜索结果异常,稍后重试 (${failedSourceCount} 个源异常)"
-        FailureKind.EMPTY -> "换个关键词再试 (${failedSourceCount} 个源异常)"
-        FailureKind.UNKNOWN -> "本次未找到结果,可换个关键词再试 (${failedSourceCount} 个源异常)"
+            FailureKind.NETWORK -> "网络好像不通,检查 WiFi / 数据连接后再试 (${failedSourceCount} 个源异常)"
+            FailureKind.TIMEOUT ->
+                "搜索超时,可换个关键词或到「我的」检查源开关 (${failedSourceCount} 个源异常)"
+            FailureKind.SOURCE_DOWN -> "部分源暂时不可用,稍后重试 (${failedSourceCount} 个源异常)"
+            FailureKind.PARSE -> "搜索结果异常,稍后重试 (${failedSourceCount} 个源异常)"
+            FailureKind.EMPTY -> "换个关键词再试 (${failedSourceCount} 个源异常)"
+            FailureKind.UNKNOWN -> "本次未找到结果,可换个关键词再试 (${failedSourceCount} 个源异常)"
         }
     }
 
@@ -308,30 +355,6 @@ class SearchService(
         return list.sortedByDescending { r -> scoreOf(r, kwLower, tokens, now) }
     }
 
-    /**
-     * Relevance score. P0#relevance: previous formula was "base + bonus
-     * if title contains keyword", with NO penalty when the title did NOT
-     * contain the keyword at all. Combined with high source weights
-     * (Wanzhan = 100, Quark = 28) that meant unrelated results like
-     * "逆行人生" or "凡人修仙传" still scored ~135 and floated to the
-     * top of a search for "穿越".
-     *
-     * The new formula has a hard "any-token hit required" floor
-     * ([MISS_PENALTY] = -200). If a result title does not contain the
-     * search keyword as a substring nor any whitespace-split token, it
-     * is effectively demoted to the bottom of the list. Source/disk
-     * bonuses (max 135) cannot pull it back up because they are
-     * strictly smaller than the penalty magnitude.
-     *
-     * Token-level bonuses are weighted by hit *ratio* not hit *count*,
-     * so a 2-token query with 2/2 hits outscores a 3-token query with
-     * 2/3 hits even though both have hit count = 2.
-     *
-     * Title-position weight: a keyword (or first hit token) found near
-     * the start of the title is treated as a stronger signal than one
-     * at the tail. "穿越之xxx" outranks "xxx穿越记" because the user
-     * is more likely to have searched for the leading topic.
-     */
     private fun scoreOf(
         r: SearchResult,
         keywordLower: String,
@@ -345,9 +368,7 @@ class SearchService(
         val titleLower = r.title.lowercase(Locale.ROOT)
         if (r.extractionCode.isNullOrBlank()) score += 2
 
-        // --- keyword relevance (the part that fixes "inaccurate tail") ---
         if (keywordTokens.isEmpty()) {
-            // Single literal token. Fall back to plain substring match.
             val hits = titleLower.contains(keywordLower)
             if (!hits) {
                 score += MISS_PENALTY
@@ -356,7 +377,6 @@ class SearchService(
                 score += positionBonus(titleLower, keywordLower)
             }
         } else {
-            // Multi-token keyword. Compute per-token hit and ratio.
             val hitCount = keywordTokens.count { titleLower.contains(it) }
             if (hitCount == 0) {
                 score += MISS_PENALTY
@@ -365,14 +385,11 @@ class SearchService(
                 score += HIT_FULL_BONUS * ratio
                 score += hitCount * HIT_TOKEN_BONUS
                 if (hitCount == keywordTokens.size) {
-                    // All tokens hit — strong positive. Position of the
-                    // first token also counts here.
                     score += positionBonus(titleLower, keywordTokens[0])
                 }
             }
         }
 
-        // --- freshness (capped, very old results stop earning bonus) ---
         val parsedDate = parseDateMillis(r.date)
         if (parsedDate != null) {
             val days = ((nowMs - parsedDate) / 86_400_000L).coerceAtLeast(0)
@@ -383,9 +400,6 @@ class SearchService(
             }
         }
 
-        // --- short-title bias (light tie-breaker) ---
-        // A 4-8 char title is usually closer to a real title than a
-        // long descriptive one with the keyword shoehorned in.
         if (titleLower.length in 4..SHORT_TITLE_MAX_CHARS) {
             score += SHORT_TITLE_BONUS
         }
@@ -393,12 +407,6 @@ class SearchService(
         return score
     }
 
-    /**
-     * Where the keyword first appears in the title. A match at the
-     * start of the title outranks one at the tail. We use the
-     * normalised position (0.0 - 1.0) so this stays a small tie-breaker
-     * rather than a dominant signal.
-     */
     private fun positionBonus(titleLower: String, keywordLower: String): Double {
         if (keywordLower.isBlank() || titleLower.isBlank()) return 0.0
         val idx = titleLower.indexOf(keywordLower)
