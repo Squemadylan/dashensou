@@ -1,0 +1,12 @@
+## Release Notes
+
+### Fixes
+- __Source-switch state lost on theme switch__: Added 'uiMode' to AndroidManifest.xml configChanges; override onConfigurationChanged() to call SourcePrefs.applyTo() so search-source enabled/disabled state stays in sync when switching between light/dark theme
+- __Download path fix__ (previous): enqueueDirectDownload now writes to public Downloads directory via DirectDownloader; fileSize is written in DB instead of being left at 0
+- __Filename regex fix__ (previous): DownloadManager/ProgressDownloader/SearchService regex now correctly preserves CJK characters
+
+### APK
+- Name: app-debug.apk
+- Size: ~8.3 MB
+- Build: debug / minSdk 24
+- Install: adb install -r app-debug.apk

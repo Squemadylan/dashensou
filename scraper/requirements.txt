@@ -1,0 +1,2 @@
+scrapling[fetchers]>=0.4.10
+pydantic>=2.6

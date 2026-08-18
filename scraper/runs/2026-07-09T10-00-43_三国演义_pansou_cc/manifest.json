@@ -1,0 +1,21 @@
+{
+  "keyword": "三国演义",
+  "page": 1,
+  "enabled_sources": [
+    "pansou_cc"
+  ],
+  "started_at": "2026-07-09T10:00:43",
+  "status": "done",
+  "sources": {
+    "pansou_cc": {
+      "status": "ok",
+      "result_count": 16,
+      "fetcher": "stealthy",
+      "http_status": 200,
+      "detail_attempted": 1,
+      "detail_ok": 1
+    }
+  },
+  "finished_at": "2026-07-09T10:00:53",
+  "total_results": 16
+}

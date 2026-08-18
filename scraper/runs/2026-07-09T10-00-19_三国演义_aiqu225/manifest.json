@@ -1,0 +1,21 @@
+{
+  "keyword": "三国演义",
+  "page": 1,
+  "enabled_sources": [
+    "aiqu225"
+  ],
+  "started_at": "2026-07-09T10:00:19",
+  "status": "done",
+  "sources": {
+    "aiqu225": {
+      "status": "ok",
+      "result_count": 4,
+      "fetcher": "fetch",
+      "http_status": 200,
+      "detail_attempted": 2,
+      "detail_ok": 2
+    }
+  },
+  "finished_at": "2026-07-09T10:00:33",
+  "total_results": 4
+}
