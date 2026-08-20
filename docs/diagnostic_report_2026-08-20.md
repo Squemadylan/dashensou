@@ -168,4 +168,30 @@ gradle.bat -p E:/New/dashensou assembleDebug --no-daemon
 # 静态分析
 gradle.bat -p E:/New/dashensou lintDebug --no-daemon
 # 结果：assembleDebug BUILD SUCCESSFUL；lintDebug 117 项告警（1 Error）
+
+---
+
+## 修复状态（2026-08-20 已执行）
+
+已按本报告修复并提交（见 git log：`5f24d87 fix: 按诊断报告完整修复（P0/P1/P2）`）：
+
+- ✅ **P0-1** 夜间主题 `windowLightNavigationBar` 补 `tools:targetApi="o_mr1"` → lint `NewApi` Error 消除
+- ✅ **P0-2** 停止跟踪 `.gradle/` 缓存与 `app-debug.apk`；`.gitignore` 追加 `app-debug.apk` / `app-release.apk`
+- ✅ **P0-3** `U3c3Source` 域名 `u3c3u3c3.u3c3u3c3.u3c3.com` → `u3c3.com`（备注镜像与发布页）
+- ✅ **P1-4** README 源数量改 16、分支改 `master`、目录注释与源清单表同步
+- ✅ **P1-5** `update.json` 对齐 `versionCode=1` / `apkUrl` v1.0.0 / `changelog`
+- ✅ **P1-7** 删除 `dist/` 调试垃圾（164MB，gitignored 安全删）
+- ✅ **P2-8** 搜索源默认 `enabled` 统一为 `false`，`defaultSources()` 为唯一真源
+- ✅ **P2-9** 删除 proguard Markwon/CommonMark 死规则
+- ✅ **P2-10** `SourcePrefs` `commit()` → `apply()`
+
+**验证**：`assembleDebug` + `lintDebug` 通过；lint 由 117 项（1 Error）降至 **114 项（0 Error）**。
+
+### 暂缓 / 需权衡项（未改，避免破坏构建或功能）
+
+- **依赖升级**（AGP 8.2→8.7、Kotlin 1.9→2.x 等 19 项）：盲目升级易破坏已验证构建，建议独立分支验证后合入。
+- **未用资源 72 项**：mass-delete 存在反射 / WebView 动态引用风险；release 已开 `shrinkResources` 覆盖，按需逐条清理。
+- **cleartext 全开 / JS WebView**（`InsecureBaseConfiguration` / `SetJavaScriptEnabled`）：聚合抓取第三方站所必需，按域名白名单不可行（域名动态轮换），保留为已知接受风险。
+- **StaticFieldLeak 3 项**：经核实 `AppWebView` 持 `Application` context、`AppUpdateManager` 同理，均非泄漏，Lint 误报。
+- **ObsoleteSdkInt / Overdraw / UseCompoundDrawables / UselessParent / SetTextI18n**：低优先级 UI 细节，按需处理。
 ```
