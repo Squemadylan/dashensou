@@ -87,7 +87,7 @@ class KksoSource(
         val results = mutableListOf<SearchResult>()
         for (i in 0 until items.length()) {
             val item = items.optJSONObject(i) ?: continue
-            val shareUrl = item.optString("url", "").trim()
+            val shareUrl = com.dashensou.app.util.UrlKinds.unescapeJsonUrl(item.optString("url", "")).trim()
             if (shareUrl.isBlank() || !shareUrl.startsWith("http", ignoreCase = true)) continue
 
             val title = item.optString("title")

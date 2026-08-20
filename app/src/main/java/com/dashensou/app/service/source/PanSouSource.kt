@@ -102,7 +102,7 @@ class PanSouSource(
                 val len = arr.length()
                 for (i in 0 until len) {
                     val item = arr.optJSONObject(i) ?: continue
-                    val urlStr = item.optString("url", "")
+                    val urlStr = com.dashensou.app.util.UrlKinds.unescapeJsonUrl(item.optString("url", ""))
                     if (urlStr.isBlank()) continue
                     val note = item.optString("note", "")
                     val effectiveTitle = if (note.isBlank()) type else note

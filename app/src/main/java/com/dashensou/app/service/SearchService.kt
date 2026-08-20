@@ -16,11 +16,14 @@ import com.dashensou.app.service.source.OpenLibrarySource
 import com.dashensou.app.service.source.PanSouSource
 import com.dashensou.app.service.source.PansouCcSource
 import com.dashensou.app.service.source.PansouDeSource
+import com.dashensou.app.service.source.Quark4kSource
 import com.dashensou.app.service.source.SearchOutcome
 import com.dashensou.app.service.source.SearchSource
 import com.dashensou.app.service.source.TelegramChannelSource
 import com.dashensou.app.service.source.WanzhanApiSource
 import com.dashensou.app.service.source.XiaoShuoApiSource
+import com.dashensou.app.service.source.YunsoSource
+import com.dashensou.app.service.source.U3c3Source
 import com.dashensou.app.service.source.web.PansouCcWebSource
 import com.dashensou.app.util.SourceCircuitBreaker
 import com.dashensou.app.util.SourcePrefs
@@ -59,6 +62,9 @@ class SearchService(
         private const val SOURCE_WEIGHT_AIQU = 55
         private const val SOURCE_WEIGHT_OPENLIBRARY = 40
         private const val SOURCE_WEIGHT_GUTENDEX = 30
+        private const val SOURCE_WEIGHT_QUARK4K = 50
+        private const val SOURCE_WEIGHT_YUNSO = 50
+        private const val SOURCE_WEIGHT_U3C3 = 30
 
         private const val NETDISK_BAIDU = 30
         private const val NETDISK_QUARK = 28
@@ -104,6 +110,9 @@ class SearchService(
             DuanJuSource().apply { enabled = true },
             XiaoShuoApiSource().apply { enabled = true },
             Api52Source().apply { enabled = false },
+            Quark4kSource().apply { enabled = true },
+            YunsoSource().apply { enabled = true },
+            U3c3Source().apply { enabled = false },  // 磁力源，用户按需开启
             OpenLibrarySource().apply { enabled = false },
             GutendexSource().apply { enabled = false }
         )
@@ -123,6 +132,9 @@ class SearchService(
             "aiqu225" -> SOURCE_WEIGHT_AIQU
             "openlibrary" -> SOURCE_WEIGHT_OPENLIBRARY
             "gutendex" -> SOURCE_WEIGHT_GUTENDEX
+            "quark4k" -> SOURCE_WEIGHT_QUARK4K
+            "yunso" -> SOURCE_WEIGHT_YUNSO
+            "u3c3" -> SOURCE_WEIGHT_U3C3
             else -> 10
         }
 
