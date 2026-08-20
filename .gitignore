@@ -19,3 +19,6 @@ local.properties
 /captures/
 .externalNativeBuild/
 .cxx/
+# 构建产物（用 GitHub Releases 分发，勿入仓库）
+app-debug.apk
+app-release.apk

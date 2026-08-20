@@ -22,7 +22,7 @@ class WanzhanApiSource(
 
     override val id = "wanzhan"
     override val displayName = "万站聚合"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = API_BUDGET_MS
 
     private data class KeyHealth(

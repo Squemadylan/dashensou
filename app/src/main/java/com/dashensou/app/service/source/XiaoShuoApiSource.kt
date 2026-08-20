@@ -14,7 +14,7 @@ class XiaoShuoApiSource : SearchSource {
 
     override val id = "xiaoshuo"
     override val displayName = "电子书直链"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     // axdzs API routinely takes 6-12s; default 2.5s budget always times out.
     override val perSourceTimeoutMs: Long = API_BUDGET_MS
 

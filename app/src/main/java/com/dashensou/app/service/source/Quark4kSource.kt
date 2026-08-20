@@ -25,7 +25,7 @@ class Quark4kSource : SearchSource {
 
     override val id = "quark4k"
     override val displayName = "夸克论坛"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 12_000L
 
     companion object {

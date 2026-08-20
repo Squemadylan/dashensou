@@ -16,7 +16,7 @@ class PansouCcSource : SearchSource {
 
     override val id = "pansou_cc"
     override val displayName = "搜盘来源"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     // pansou.cc 列表页也是慢站,实测 1.8-2.5s 起步。给 4.5s 预算。
     override val perSourceTimeoutMs: Long = 4_500L
 

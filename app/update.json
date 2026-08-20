@@ -2,7 +2,7 @@
   "versionCode": 1,
   "versionName": "1.0.0",
   "minVersionCode": 1,
-  "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.1-debug/dashensou-1.0.1.apk",
-  "changelog": "v1.0.0: current release. Force update disabled after testing.",
+  "apkUrl": "https://github.com/Squemadylan/dashensou/releases/download/v1.0.0/dashensou-1.0.0.apk",
+  "changelog": "v1.0.0: 多源网盘资源搜索（16 个搜索源）。强制更新已关闭。",
   "manualUpdateUrl": "https://github.com/Squemadylan/dashensou/releases"
 }

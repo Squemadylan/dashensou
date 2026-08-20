@@ -40,7 +40,7 @@ object SourcePrefs {
     }
 
     fun setEnabled(ctx: Context, source: SearchSource, enabled: Boolean) {
-        prefs(ctx).edit().putBoolean(KEY_PREFIX + source.id, enabled).commit()
+        prefs(ctx).edit().putBoolean(KEY_PREFIX + source.id, enabled).apply()
     }
 
     fun applyTo(ctx: Context, sources: List<SearchSource>) {
@@ -51,6 +51,6 @@ object SourcePrefs {
     }
 
     fun reset(ctx: Context) {
-        prefs(ctx).edit().clear().commit()
+        prefs(ctx).edit().clear().apply()
     }
 }

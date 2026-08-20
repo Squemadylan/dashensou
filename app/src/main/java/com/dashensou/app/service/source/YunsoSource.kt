@@ -24,7 +24,7 @@ class YunsoSource : SearchSource {
 
     override val id = "yunso"
     override val displayName = "云搜"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 12_000L
 
     companion object {

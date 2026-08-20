@@ -1,6 +1,6 @@
 # 大神搜 (DaShenSou)
 
-一个面向 Android 的多源网盘资源搜索与下载工具。聚合 11 个搜索源的结果，做去重与打分排序，再以「打开网盘 App / WebView 中转 / 直接下载到 Download/」三种方式交付。
+一个面向 Android 的多源网盘资源搜索与下载工具。聚合 16 个搜索源（17 个实例）的结果，做去重与打分排序，再以「打开网盘 App / WebView 中转 / 直接下载到 Download/」三种方式交付。
 
 ## 项目概览
 
@@ -61,7 +61,7 @@ dashensou/
 │       │   ├── database/                   # AppDatabase + 2 个 DAO
 │       │   ├── net/                        # HttpClient（全局 OkHttp 单例）
 │       │   ├── service/                    # SearchService / DownloadManager / DirectDownloader
-│       │   │   └── source/                 # 11 个搜索源实现
+│       │   │   └── source/                 # 16 个搜索源实现（含 pansou.cc 的 WebView 主路径 + OkHttp 兜底）
 │       │   ├── ui/
 │       │   │   ├── MainActivity.kt         # 主界面，Tab 切换、Intent 分发
 │       │   │   ├── WebViewActivity.kt      # WebView 中转页
@@ -97,12 +97,19 @@ dashensou/
 |-------|--------|------|------|----------|
 | `wanzhan` | 万站聚合 | 网盘 | HTTPS/JSON | ✅ |
 | `pansou_252` | 网盘来源 | 网盘 | HTTPS/JSON | ✅ |
-| `pansou_cc` | 搜盘来源 | 网盘 | HTML + Jsoup | ✅ |
-| `haisou` | 海搜 | 网盘 | - | ✅ |
-| `duanju` | 短剧 | 网盘 | - | ✅ |
-| `xiaoshuo` | 电子书直链 | 直链 | HTTPS/JSON | ✅ |
+| `pansou_cc-web` | 搜盘来源（WebView 主路径） | 网盘 | WebView + Jsoup | ✅ |
+| `pansou_cc` | 搜盘来源（OkHttp 兜底） | 网盘 | HTML + Jsoup | ❌ |
+| `haisou` | 海搜 | 网盘 | HTTPS/JSON | ✅ |
+| `pansou_de` | pansou.de | 网盘 | HTTPS/JSON | ✅ |
+| `kkso` | kkso | 网盘 | HTTPS/JSON | ✅ |
+| `telegram` | Telegram 频道 | 网盘 | RSS/HTML | ✅ |
 | `aiqu225` | 电子书搜索 | 直链 | HTML + Jsoup | ✅ |
+| `duanju` | 短剧 | 网盘 | HTML + Jsoup | ✅ |
+| `xiaoshuo` | 电子书直链 | 直链 | HTTPS/JSON | ✅ |
 | `api52` | 聚合搜索 | 网盘 | HTTPS/JSON | ❌ |
+| `quark4k` | 夸克论坛 | 网盘 | HTTPS/JSON | ✅ |
+| `yunso` | 云搜 | 网盘 | HTTPS/JSON | ✅ |
+| `u3c3` | u3c3 磁力 | 磁力 | HTML + Jsoup | ❌ |
 | `openlibrary` | 海外图书 | 直链 | HTTPS/JSON | ❌ |
 | `gutendex` | 海外公版 | 直链 | HTTPS/JSON | ❌ |
 
@@ -165,7 +172,7 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 | `local ≥ versionCode` | 已是最新 |
 
 配置文件：
-- 远程：`https://raw.githubusercontent.com/Squemadylan/dashensou/main/app/update.json`（jsDelivr 镜像备用）
+- 远程：`https://raw.githubusercontent.com/Squemadylan/dashensou/master/app/update.json`（jsDelivr 镜像备用）
 - 仓库内：`app/update.json`
 - 内置兜底：`app/src/main/assets/update_manifest_fallback.json`（仅启动检查可用；手动检查不走兜底）
 

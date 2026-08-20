@@ -8,5 +8,5 @@
 ### APK
 - Name: app-debug.apk
 - Size: ~8.3 MB
-- Build: debug / minSdk 24
+- Build: debug / minSdk 26
 - Install: adb install -r app-debug.apk

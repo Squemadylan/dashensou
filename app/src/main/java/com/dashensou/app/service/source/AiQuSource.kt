@@ -16,7 +16,7 @@ class AiQuSource : SearchSource {
 
     override val id = "aiqu225"
     override val displayName = "电子书搜索"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     // aiqu225 列表页 1.5-2.5s 起步,中文 GBK 编码 + 慢 CDN,手机
     // 网络下经常贴 2.5s 默认预算边缘失败。给到 5s 让它稳定返回。
     override val perSourceTimeoutMs: Long = 5_000L

@@ -28,7 +28,7 @@ class DuanJuSource : SearchSource {
 
     override val id = "duanju"
     override val displayName = "短剧源"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 8_000L
 
     companion object {

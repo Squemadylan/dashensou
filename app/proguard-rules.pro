@@ -86,9 +86,6 @@
     public static int i(...);
 }
 
-# Markwon / CommonMark（R8 精简时避免误删或告警）
--dontwarn org.commonmark.**
--dontwarn javax.lang.model.element.**
 
 # Keep custom exceptions
 -keep public class * extends java.lang.Exception

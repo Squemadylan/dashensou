@@ -31,7 +31,10 @@ class U3c3Source : SearchSource {
 
     companion object {
         private const val TAG = "U3c3Source"
-        private const val BASE_URL = "https://u3c3u3c3.u3c3u3c3.u3c3.com/?search="
+        // 真实站点 u3c3.com（域名常轮换，镜像：u3c3.vip / u3c3.in / u3c3.live / u3c3.cc；
+        // 最新域名见发布页 https://github.com/u3c3/bt-btt）。原代码中
+        // "u3c3u3c3.u3c3u3c3.u3c3.com" 为拼接占位笔误，已修正为规范域名。
+        private const val BASE_URL = "https://u3c3.com/?search="
         private const val UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120 Safari/537.36"

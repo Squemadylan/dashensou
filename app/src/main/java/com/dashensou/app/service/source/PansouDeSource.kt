@@ -31,7 +31,7 @@ class PansouDeSource(
 
     override val id = "pansou_de"
     override val displayName = "盘搜.de"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 20_000L
 
     override suspend fun search(

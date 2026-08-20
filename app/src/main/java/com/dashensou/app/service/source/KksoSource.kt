@@ -31,7 +31,7 @@ class KksoSource(
 
     override val id = "kkso"
     override val displayName = "夸克搜"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 12_000L
 
     override suspend fun search(

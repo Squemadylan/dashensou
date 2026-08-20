@@ -22,7 +22,7 @@ class PanSouSource(
 
     override val id = "pansou_252"
     override val displayName = "网盘来源"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     // P0#timeout: `/api/search` with `src=all` fans out to every
     // upstream mirror and routinely takes 5-20s (measured 2026-06).
     // The default 2.5s SearchService budget and the shared 12s OkHttp

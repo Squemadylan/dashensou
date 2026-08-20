@@ -13,7 +13,7 @@ class OpenLibrarySource : SearchSource {
 
     override val id = "openlibrary"
     override val displayName = "海外图书"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
 
     companion object {
         private const val TAG = "OpenLibrarySource"

@@ -34,7 +34,7 @@ class PansouCcWebSource : SearchSource {
 
     override val id = "pansou_cc-web"
     override val displayName = "盘搜(浏览器)"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 25_000L
 
     private val baseUrl = "https://pansou.cc"

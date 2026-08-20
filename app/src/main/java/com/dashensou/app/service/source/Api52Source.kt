@@ -20,7 +20,7 @@ class Api52Source(
 
     override val id = "api52"
     override val displayName = "聚合搜索"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
 
     companion object {
         private const val TAG = "Api52Source"

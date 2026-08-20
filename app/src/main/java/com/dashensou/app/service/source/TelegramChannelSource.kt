@@ -44,7 +44,7 @@ class TelegramChannelSource(
 
     override val id = "telegram"
     override val displayName = "TG频道"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 25_000L
 
     private data class ChannelOutcome(

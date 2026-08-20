@@ -66,7 +66,7 @@ class HaiSouSource : SearchSource {
 
     override val id = "haisou"
     override val displayName = "海搜"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
     override val perSourceTimeoutMs: Long = 20_000L
 
     private val baseUrl = "https://haisou.cc"

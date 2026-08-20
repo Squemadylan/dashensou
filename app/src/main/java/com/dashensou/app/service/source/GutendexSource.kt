@@ -16,7 +16,7 @@ class GutendexSource : SearchSource {
 
     override val id = "gutendex"
     override val displayName = "海外公版"
-    override var enabled: Boolean = true
+    override var enabled: Boolean = false
 
     companion object {
         private const val TAG = "GutendexSource"
