@@ -90,6 +90,8 @@ import com.dashensou.app.util.AppUpdateManager
 import com.dashensou.app.util.SourcePrefs
 
 import com.dashensou.app.util.UrlKinds
+import com.dashensou.app.util.BanManager
+import com.dashensou.app.util.ReportManager
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -132,6 +134,9 @@ class MainActivity : AppCompatActivity() {
 
 
     private lateinit var binding: ActivityMainBinding
+
+    private lateinit var banManager: BanManager
+    private lateinit var reportManager: ReportManager
 
     private lateinit var pansouSource: PansouCcSource
 
@@ -275,6 +280,122 @@ class MainActivity : AppCompatActivity() {
             searchViewModel.search(q, page = 1)
         }
 
+        // 设备封禁：后台拉取 GitHub banlist.txt，命中进封禁页，未命中正常使用
+        banManager = BanManager(this)
+        reportManager = ReportManager(this, banManager)
+        runBanCheck()
+
+    }
+
+    /**
+     * 设备封禁校验：后台拉取 GitHub banlist.txt。
+     * 命中 → 原生封禁页 + 钉钉「已阻止」告警；未命中 → 设备上线被动上报（24h 去重）。
+     */
+    private fun runBanCheck() {
+        Thread {
+            val banned = banManager.isBanned()
+            runOnUiThread {
+                if (banned) {
+                    showBannedScreen()
+                    reportManager.reportBannedAttempt()
+                } else {
+                    Thread { reportManager.reportIfNeeded("launch") }.start()
+                }
+            }
+        }.start()
+    }
+
+    /**
+     * 原生封禁页（纯代码 View，不依赖 H5/主题/网络，被封时一定可渲染）。
+     * 居中显示「本设备已被封禁」+ 设备码（长按复制）+ 申诉邮箱（mailto）。
+     */
+    private fun showBannedScreen() {
+        val id = banManager.getDeviceId()
+        val d = resources.displayMetrics.density
+        val pad24 = (24 * d).toInt()
+        val pad16 = (16 * d).toInt()
+        val pad4 = (4 * d).toInt()
+
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(pad24, pad24, pad24, pad24)
+            setBackgroundColor(0xFF111118.toInt())
+        }
+
+        val title = android.widget.TextView(this).apply {
+            text = "本设备已被封禁"
+            textSize = 22f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 0, 0, pad16)
+        }
+
+        val idLabel = android.widget.TextView(this).apply {
+            text = "设备识别码（长按可复制）"
+            textSize = 13f
+            setTextColor(0xFF9999AA.toInt())
+        }
+
+        val idView = android.widget.TextView(this).apply {
+            text = id
+            textSize = 20f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(0xFFE0E0E0.toInt())
+            setPadding(0, pad4, 0, pad4)
+            setOnLongClickListener {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("device_id", id))
+                Toast.makeText(this@MainActivity, "设备码已复制", Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+
+        val hint = android.widget.TextView(this).apply {
+            text = "如需申诉，请邮件联系开发者"
+            textSize = 13f
+            setTextColor(0xFF888899.toInt())
+            setPadding(0, (24 * d).toInt(), 0, pad4)
+            gravity = android.view.Gravity.CENTER
+        }
+
+        val email = "sauyh@qq.com"
+        val emailView = android.widget.TextView(this).apply {
+            text = email
+            textSize = 15f
+            setTextColor(0xFF6EA8FE.toInt())
+            setPadding(0, 0, 0, pad4)
+            gravity = android.view.Gravity.CENTER
+            paint.isUnderlineText = true
+            setOnClickListener {
+                try {
+                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = android.net.Uri.parse("mailto:$email")
+                        putExtra(Intent.EXTRA_SUBJECT, "大神搜 — 设备封禁申诉")
+                        putExtra(Intent.EXTRA_TEXT, "我的设备识别码：$id\n")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("email", email))
+                    Toast.makeText(this@MainActivity, "未找到邮件应用，邮箱已复制", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        val emailHint = android.widget.TextView(this).apply {
+            text = "请发送设备识别码以便核实"
+            textSize = 12f
+            setTextColor(0xFF707080.toInt())
+            gravity = android.view.Gravity.CENTER
+        }
+
+        layout.addView(title)
+        layout.addView(idLabel)
+        layout.addView(idView)
+        layout.addView(hint)
+        layout.addView(emailView)
+        layout.addView(emailHint)
+        setContentView(layout)
     }
 
     override fun onResume() {
