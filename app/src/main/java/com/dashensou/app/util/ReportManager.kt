@@ -2,6 +2,7 @@ package com.dashensou.app.util
 
 import android.content.Context
 import android.os.Build
+import com.dashensou.app.BuildConfig
 import android.util.Base64
 import android.util.Log
 import org.json.JSONObject
@@ -63,7 +64,7 @@ class ReportManager(
     private fun reportToGithub(
         deviceId: String, model: String, osVer: String, time: String, reason: String
     ): Boolean {
-        if (GITHUB_PAT.isBlank() || GITHUB_PAT == PLACEHOLDER) {
+        if (GITHUB_PAT.isBlank()) {
             Log.w(TAG, "GITHUB_PAT not set, skip github report")
             return false
         }
@@ -225,18 +226,17 @@ class ReportManager(
         private const val TAG = "ReportManager"
         private const val KEY_LAST_REPORT = "last_report_ts"
         private const val TWENTY_FOUR_HOURS = 24L * 60 * 60 * 1000
-        private const val PLACEHOLDER = "BUILD_CONFIG_PLACEHOLDER"
 
-        /** GitHub 细粒度 PAT（issues:write）。限 dashensou 仓库。 */
-        private const val GITHUB_PAT = "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"
+        /** GitHub 细粒度 PAT（issues:write）。从 local.properties 注入，不提交仓库。 */
+        private val GITHUB_PAT = BuildConfig.GITHUB_PAT
 
         /** GitHub REST API：issues 端点。 */
         private const val GITHUB_API = "https://api.github.com/repos/Squemadylan/dashensou/issues"
 
-        /** 钉钉自定义机器人 webhook（加签模式）。 */
-        private const val DINGTALK_WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=28bdc731323e3d8c196dfe5d9f8ab3335bd5fdb3c297ea8f1f31e2638a49e579"
+        /** 钉钉自定义机器人 webhook（加签模式）。从 local.properties 注入。 */
+        private val DINGTALK_WEBHOOK = BuildConfig.DINGTALK_WEBHOOK
 
-        /** 钉钉机器人加签密钥（SEC 开头）。 */
-        private const val DINGTALK_SECRET = "SEC42d67d7bdfbb63c4a19f0fa9031c555355a4907c623989228586b3a0fb05c4ed"
+        /** 钉钉机器人加签密钥（SEC 开头）。从 local.properties 注入。 */
+        private val DINGTALK_SECRET = BuildConfig.DINGTALK_SECRET
     }
 }

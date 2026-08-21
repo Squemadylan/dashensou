@@ -21,6 +21,11 @@ android {
         buildConfigField "String", "UPDATE_MANIFEST_URL_MIRROR",
                 "\"https://cdn.jsdelivr.net/gh/Squemadylan/dashensou@master/app/update.json\""
 
+        // GitHub PAT / 钉钉机器人密钥从 local.properties 注入，避免硬编码进仓库被 GitHub 吊销
+        buildConfigField "String", "GITHUB_PAT", "\"${localProps("github.pat", "")}\""
+        buildConfigField "String", "DINGTALK_WEBHOOK", "\"${localProps("dingtalk.webhook", "")}\""
+        buildConfigField "String", "DINGTALK_SECRET", "\"${localProps("dingtalk.secret", "")}\""
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
@@ -79,6 +84,16 @@ android {
         abortOnError false
         checkReleaseBuilds false
     }
+}
+
+// 读取 local.properties 的工具方法
+ext.localProps = { key, defaultValue ->
+    def props = new Properties()
+    def file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.withInputStream { props.load(it) }
+    }
+    return props.getProperty(key, defaultValue ?: "")
 }
 
 dependencies {
