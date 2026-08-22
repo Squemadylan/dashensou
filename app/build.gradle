@@ -4,6 +4,16 @@ plugins {
     id 'com.google.devtools.ksp'
 }
 
+// 读取 local.properties 的工具方法（须在 android{} 之前定义，否则 defaultConfig 内调用找不到）
+ext.localProps = { key, defaultValue ->
+    def props = new Properties()
+    def file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.withInputStream { props.load(it) }
+    }
+    return props.getProperty(key, defaultValue ?: "")
+}
+
 android {
     namespace 'com.dashensou.app'
     compileSdk 34
@@ -84,16 +94,6 @@ android {
         abortOnError false
         checkReleaseBuilds false
     }
-}
-
-// 读取 local.properties 的工具方法
-ext.localProps = { key, defaultValue ->
-    def props = new Properties()
-    def file = rootProject.file("local.properties")
-    if (file.exists()) {
-        file.withInputStream { props.load(it) }
-    }
-    return props.getProperty(key, defaultValue ?: "")
 }
 
 dependencies {

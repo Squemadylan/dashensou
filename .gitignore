@@ -22,3 +22,6 @@ local.properties
 # 构建产物（用 GitHub Releases 分发，勿入仓库）
 app-debug.apk
 app-release.apk
+
+# WorkBuddy 内部文件（截图、记忆等）
+.workbuddy/
