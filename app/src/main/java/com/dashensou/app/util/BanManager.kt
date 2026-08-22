@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import com.dashensou.app.BuildConfig
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -132,10 +133,7 @@ class BanManager(private val context: Context) {
         private const val TAG = "BanManager"
         private const val KEY_DEVICE_ID = "device_id"
 
-        /**
-         * GitHub PAT（复用 ReportManager 的 PAT，公开仓库可不填但不填只有 60 req/h）。
-         * 注意：这串和 ReportManager 里的一致，改一处另一处也要改。
-         */
-        private const val GITHUB_PAT = "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"
+        /** GitHub PAT（从 BuildConfig 注入，不硬编码）。 */
+        private val GITHUB_PAT = BuildConfig.GITHUB_PAT
     }
 }
